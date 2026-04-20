@@ -578,9 +578,36 @@ function editStage(e, i) {
   tempWaypoints = [...s.waypoints];
   tempPacenotes = s.pacenotes.map(p => ({...p}));
   document.getElementById('stageName').value = s.name;
+  showScreen('editor');
+  // マーカーとルートを復元（Maps読み込み後に実行）
+  const restoreMap = () => {
+    clearWpMarkers();
+    tempWaypoints.forEach((wp, idx) => addWpMarker(wp, idx + 1));
+    if (tempWaypoints.length >= 2 && directionsService) {
+      const origin = tempWaypoints[0];
+      const destination = tempWaypoints[tempWaypoints.length - 1];
+      const waypoints = tempWaypoints.slice(1, -1).map(wp => ({ location: wp, stopover: false }));
+      directionsService.route({ origin, destination, waypoints, travelMode: google.maps.TravelMode.DRIVING }, (result, status) => {
+        if (status === 'OK') {
+          directionsRenderer.setDirections(result);
+          // 地図をルート全体にフィット
+          const bounds = new google.maps.LatLngBounds();
+          tempWaypoints.forEach(wp => bounds.extend(wp));
+          map.fitBounds(bounds);
+        }
+      });
+    } else if (tempWaypoints.length === 1) {
+      map.panTo(tempWaypoints[0]);
+    }
+    google.maps.event.trigger(map, 'resize');
+  };
+  if (mapsLoaded && map) {
+    setTimeout(restoreMap, 150);
+  }
   renderWaypoints();
   renderPacenotes();
-  showScreen('editor');
+  document.getElementById('pacenoteSection').style.display = tempPacenotes.length > 0 ? 'block' : 'none';
+  document.getElementById('saveStageBtn').style.display = tempPacenotes.length > 0 ? 'block' : 'none';
 }
 
 // ── EDITOR ──
