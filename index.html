@@ -358,12 +358,12 @@
 <div class="screen" id="home">
   <div class="header">
     <div class="logo">PACE<span>NOTE</span></div>
-    <button class="header-btn" onclick="showScreen('editor'); resetEditor()">＋ NEW</button>
+    <button class="header-btn" onclick="resetEditor(); showScreen('editor');">＋ NEW</button>
   </div>
   <div class="home-content" id="stageList">
     <div class="section-label">STAGES</div>
     <div id="stageCards"></div>
-    <button class="add-stage-btn" onclick="showScreen('editor'); resetEditor()">＋ ステージを追加</button>
+    <button class="add-stage-btn" onclick="resetEditor(); showScreen('editor');">＋ ステージを追加</button>
   </div>
   <button class="start-btn" id="startBtn" disabled onclick="startDriving()">▶ START STAGE</button>
 </div>
@@ -471,6 +471,7 @@
     </div>
     <input class="modal-note-input" id="modalNote" placeholder="備考（例：長い、インなし）">
     <button class="modal-save-btn" onclick="saveModalEdit()">APPLY</button>
+    <button class="modal-save-btn" onclick="deleteModalPacenote()" style="background:transparent;border:1px solid var(--r1);color:var(--r1);margin-top:8px">このコーナーを削除</button>
   </div>
 </div>
 
@@ -658,8 +659,10 @@ function resetEditor() {
   tempWaypoints = [];
   tempPacenotes = [];
   clearWpMarkers();
-  if (directionsRenderer) directionsRenderer.setDirections({ routes: [] });
+  try { if (directionsRenderer) directionsRenderer.setMap(null); } catch(e) {}
+  try { if (directionsRenderer) directionsRenderer.setMap(map); } catch(e) {}
   document.getElementById('stageName').value = '';
+  document.getElementById('mapSearchInput').value = '';
   renderWaypoints();
   renderPacenotes();
   document.getElementById('pacenoteSection').style.display = 'none';
@@ -798,6 +801,7 @@ function extractPacenotes(path) {
 
     if (Math.abs(angle) >= MIN_ANGLE) {
       const sev = angleToSeverity(Math.abs(angle));
+      if (sev === 6) continue; // 重大度6（緩すぎるカーブ）は除外
       const dir = angle < 0 ? 'R' : 'L';
       // Merge if close to previous
       if (notes.length > 0 && dist - notes[notes.length-1].dist < 30) {
@@ -906,6 +910,14 @@ function selectDir(d) {
     b.classList.toggle('selected', b.dataset.dir === d);
   });
 }
+function deleteModalPacenote() {
+  if (modalEditIdx >= 0) {
+    tempPacenotes.splice(modalEditIdx, 1);
+    renderPacenotes();
+  }
+  document.getElementById('editModal').classList.add('hidden');
+}
+
 function saveModalEdit() {
   const sev = parseInt(document.querySelector('.sev-btn.selected')?.dataset.sev || '3');
   const dir = document.querySelector('.dir-btn.selected')?.dataset.dir || 'L';
