@@ -454,7 +454,7 @@
 <div class="modal-overlay hidden" id="editModal" onclick="closeModal(event)">
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-title">EDIT PACENOTE</div>
-    <div class="modal-title" style="font-size:10px;margin-bottom:8px;color:var(--text-dim)">重大度（1=ヘアピン ↔ 6=緩いカーブ）</div>
+    <div class="modal-title" style="font-size:10px;margin-bottom:8px;color:var(--text-dim)">重大度（1=ヘアピン ↔ 5=緩いカーブ）</div>
     <div class="sev-picker" id="sevPicker">
       <button class="sev-btn sev-1" data-sev="1" onclick="selectSev(1)"><span>1</span></button>
       <button class="sev-btn sev-2" data-sev="2" onclick="selectSev(2)"><span>2</span></button>
@@ -785,8 +785,9 @@ async function analyzeRoute() {
 // ── PACENOTE EXTRACTION ──
 function extractPacenotes(path) {
   const notes = [];
-  const MIN_ANGLE = 12; // degrees to count as corner
+  const MIN_ANGLE = 18; // 閾値を引き上げ（緩いカーブをさらに除外）
   let dist = 0;
+  let lastCornerDist = 0; // 直前のコーナーからの距離追跡
 
   for (let i = 1; i < path.length - 1; i++) {
     const p0 = path[i - 1], p1 = path[i], p2 = path[i + 1];
@@ -800,17 +801,26 @@ function extractPacenotes(path) {
     dist += segDist;
 
     if (Math.abs(angle) >= MIN_ANGLE) {
-      const sev = angleToSeverity(Math.abs(angle));
-      if (sev === 6) continue; // 重大度6（緩すぎるカーブ）は除外
+      let sev = angleToSeverity(Math.abs(angle));
+      if (sev >= 6) continue; // 6（緩すぎるカーブ）は除外
+
       const dir = angle < 0 ? 'R' : 'L';
-      // Merge if close to previous
-      if (notes.length > 0 && dist - notes[notes.length-1].dist < 30) {
-        const prev = notes[notes.length-1];
-        if (Math.abs(angle) > angleToSeverityRaw(prev.severity)) {
+
+      // 直前コーナーからの距離が短い → 加速できていない → 1段階タイトに
+      const approachDist = notes.length > 0 ? Math.round(dist) - notes[notes.length - 1].dist : 999;
+      if (approachDist < 80 && sev > 1) {
+        sev = Math.max(1, sev - 1);
+      }
+
+      // 近接コーナーのマージ（30m以内は統合）
+      if (notes.length > 0 && Math.round(dist) - notes[notes.length - 1].dist < 30) {
+        const prev = notes[notes.length - 1];
+        if (sev < prev.severity) { // 数字が小さいほどタイト
           prev.severity = sev; prev.dir = dir;
         }
         continue;
       }
+
       notes.push({ dist: Math.round(dist), severity: sev, dir, note: '', lat: p1.lat(), lng: p1.lng() });
     }
   }
@@ -825,15 +835,15 @@ function bearing(a, b) {
   return Math.atan2(y, x) * 180 / Math.PI;
 }
 function angleToSeverity(abs) {
-  if (abs >= 120) return 1;
-  if (abs >= 90) return 2;
-  if (abs >= 60) return 3;
-  if (abs >= 40) return 4;
-  if (abs >= 25) return 5;
-  return 6;
+  if (abs >= 130) return 1; // ヘアピン
+  if (abs >= 100) return 2; // タイト
+  if (abs >= 70)  return 3; // ミディアムタイト
+  if (abs >= 50)  return 4; // ミディアム
+  if (abs >= 30)  return 5; // 緩め
+  return 6;                  // 非常に緩い（除外対象）
 }
 function angleToSeverityRaw(sev) {
-  return [120, 90, 60, 40, 25, 12][sev - 1] || 12;
+  return [130, 100, 70, 50, 30, 18][sev - 1] || 18;
 }
 
 function generateDemoPacenotes() {
@@ -1047,8 +1057,8 @@ function speakCurrentCorner() {
   if (i + 1 < ds.totalCorners) {
     const next = ds.stage.pacenotes[i + 1];
     const nextDir = next.dir === 'L' ? 'レフト' : 'ライト';
-    const d = next.dist - pn.dist;
-    msg += `、${d}メートル、${next.severity} ${nextDir}`;
+    const d = Math.round((next.dist - pn.dist) / 10) * 10; // 10m単位に丸め
+    msg += `、${d}、${next.severity} ${nextDir}`; // 「メートル」なし
   }
   speak(msg);
 }
