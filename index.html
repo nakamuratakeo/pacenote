@@ -109,6 +109,30 @@
   .map-placeholder p { font-size: 12px; letter-spacing: 2px; text-transform: uppercase; }
 
   .map-controls { display: flex; gap: 8px; }
+  .search-bar-wrap { display: flex; gap: 8px; }
+  .search-input {
+    flex: 1; background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 10px 14px; font-family: 'Noto Sans JP', sans-serif; font-size: 14px;
+    border-radius: 2px; outline: none;
+  }
+  .search-input:focus { border-color: var(--accent); }
+  .search-input::placeholder { color: var(--text-dim); }
+  .search-btn {
+    background: var(--surface2); border: 1px solid var(--accent); color: var(--accent);
+    padding: 10px 16px; font-family: 'Barlow Condensed', sans-serif; font-size: 14px;
+    font-weight: 700; letter-spacing: 2px; cursor: pointer; border-radius: 2px; flex-shrink: 0;
+  }
+  .search-btn:active { opacity: 0.7; }
+  /* Autocomplete dropdown styling */
+  .pac-container {
+    background: var(--surface) !important; border: 1px solid var(--border) !important;
+    border-radius: 2px !important; font-family: 'Noto Sans JP', sans-serif !important;
+    margin-top: 2px !important;
+  }
+  .pac-item { color: var(--text) !important; padding: 8px 12px !important; cursor: pointer !important; border-top: 1px solid var(--border) !important; }
+  .pac-item:hover { background: var(--surface2) !important; }
+  .pac-item-query { color: var(--accent) !important; font-size: 13px !important; }
+  .pac-matched { color: var(--accent) !important; }
   .map-btn {
     flex: 1; background: var(--surface2); border: 1px solid var(--border); color: var(--text);
     padding: 10px 8px; font-family: 'Barlow Condensed', sans-serif; font-size: 13px;
@@ -358,6 +382,10 @@
     </div>
 
     <div class="section-label">ROUTE MAP</div>
+    <div class="search-bar-wrap">
+      <input class="search-input" id="mapSearchInput" placeholder="🔍 地名・住所で検索..." autocomplete="off">
+      <button class="search-btn" onclick="searchPlace()">GO</button>
+    </div>
     <div id="map">
       <div class="map-placeholder">
         <div class="map-icon">🗺️</div>
@@ -490,7 +518,7 @@ function skipApiKey() {
 function initMaps() {
   if (mapsLoaded || !googleApiKey) return;
   const s = document.createElement('script');
-  s.src = `https://maps.googleapis.com/maps/api/js?key=${googleApiKey}&callback=onMapsReady&libraries=geometry`;
+  s.src = `https://maps.googleapis.com/maps/api/js?key=${googleApiKey}&callback=onMapsReady&libraries=geometry,places`;
   s.async = true; s.defer = true;
   document.head.appendChild(s);
 }
@@ -514,6 +542,20 @@ window.onMapsReady = () => {
       map.setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude });
     });
   }
+
+  // 地名検索 Autocomplete
+  const searchInput = document.getElementById('mapSearchInput');
+  const autocomplete = new google.maps.places.Autocomplete(searchInput, {
+    fields: ['geometry', 'name'],
+    componentRestrictions: { country: 'jp' }
+  });
+  autocomplete.addListener('place_changed', () => {
+    const place = autocomplete.getPlace();
+    if (!place.geometry) { showToast('場所が見つかりません'); return; }
+    map.panTo(place.geometry.location);
+    map.setZoom(15);
+    showToast(`「${place.name}」に移動しました`);
+  });
 
   // 地図タップでWP追加
   map.addListener('click', (e) => {
@@ -624,7 +666,26 @@ function resetEditor() {
   document.getElementById('saveStageBtn').style.display = 'none';
 }
 
-let wpMarkers = [];
+function searchPlace() {
+  const query = document.getElementById('mapSearchInput').value.trim();
+  if (!query) return;
+  if (!mapsLoaded) { showToast('地図を読み込み中...'); return; }
+  const geocoder = new google.maps.Geocoder();
+  geocoder.geocode({ address: query, region: 'jp' }, (results, status) => {
+    if (status === 'OK' && results[0]) {
+      map.panTo(results[0].geometry.location);
+      map.setZoom(15);
+      showToast(`「${results[0].formatted_address}」に移動`);
+    } else {
+      showToast('場所が見つかりませんでした');
+    }
+  });
+}
+
+// Enterキーでも検索
+document.getElementById('mapSearchInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') searchPlace();
+});
 function addWpMarker(wp, num) {
   if (!mapsLoaded || !map) return;
   const marker = new google.maps.Marker({
