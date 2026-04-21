@@ -373,7 +373,7 @@
   </div>
   <button class="start-btn" id="startBtn" disabled onclick="startDriving()">▶ START STAGE</button>
   <div style="text-align:center;padding:6px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:1px">
-    PACENOTE v1.2 · 2026-04-21 01:45 UTC
+    PACENOTE v1.3 · 2026-04-21 02:20 UTC
   </div>
 </div>
 
@@ -504,7 +504,7 @@ let map = null, directionsService = null, directionsRenderer = null;
 let mapsLoaded = false;
 let wpMarkers = [];
 let pnMarkers = []; // ペースノートマーカー
-let driveMap = null, driveMarker = null, drivePolyline = null;
+let driveMap = null, driveMarker = null, drivePolyline = null, driveCornerMarkers = [];
 
 // ── INIT ──
 window.onload = () => {
@@ -1076,15 +1076,14 @@ function initDriveMap(stage) {
   if (!mapsLoaded) return;
   try {
     const el = document.getElementById('driveMap');
-    // 初期中心：最初のWPかペースノート
     const first = stage.waypoints[0] || (stage.pacenotes[0] ? { lat: stage.pacenotes[0].lat, lng: stage.pacenotes[0].lng } : { lat: 35.6895, lng: 139.6917 });
     driveMap = new google.maps.Map(el, {
       zoom: 16, center: first,
       mapTypeId: 'roadmap',
       styles: darkMapStyle(),
       disableDefaultUI: true,
-      gestureHandling: 'none', // 走行中は操作不要
-      zoomControl: false
+      gestureHandling: 'greedy',
+      zoomControl: true
     });
     // ルートライン表示
     if (stage.waypoints.length >= 2) {
@@ -1102,18 +1101,56 @@ function initDriveMap(stage) {
         if (status === 'OK') dr.setDirections(result);
       });
     }
-    // 現在地マーカー（進行方向の矢印アイコン）
+    // コーナーマーカーを全て追加
+    driveCornerMarkers = [];
+    stage.pacenotes.forEach((pn, i) => {
+      if (!pn.lat || !pn.lng) return;
+      const color = SEV_COLORS[(pn.severity - 1)] || '#ffffff';
+      const marker = new google.maps.Marker({
+        position: { lat: pn.lat, lng: pn.lng },
+        map: driveMap,
+        label: { text: `${pn.severity}${pn.dir}`, color: '#0a0a0a', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: '900', fontSize: '11px' },
+        icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: color, fillOpacity: 1, strokeColor: '#0a0a0a', strokeWeight: 1.5, scale: 14 },
+        zIndex: 5
+      });
+      driveCornerMarkers.push(marker);
+    });
+    // 現在地マーカー
     driveMarker = new google.maps.Marker({
       map: driveMap,
-      icon: {
-        path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-        fillColor: '#e8ff00', fillOpacity: 1,
-        strokeColor: '#0a0a0a', strokeWeight: 1.5,
-        scale: 5, rotation: 0
-      },
+      icon: { path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW, fillColor: '#e8ff00', fillOpacity: 1, strokeColor: '#0a0a0a', strokeWeight: 1.5, scale: 5, rotation: 0 },
       zIndex: 10
     });
+    updateDriveCornerMarkers();
   } catch(e) { console.error('initDriveMap error:', e); }
+}
+
+// 通過済みマーカーを暗く・次のコーナーを強調
+function updateDriveCornerMarkers() {
+  if (!driveCornerMarkers) return;
+  const idx = drivingState ? drivingState.idx : 0;
+  driveCornerMarkers.forEach((marker, i) => {
+    try {
+      const pn = drivingState.stage.pacenotes[i];
+      const color = SEV_COLORS[(pn.severity - 1)] || '#ffffff';
+      if (i < idx) {
+        // 通過済み：暗く小さく
+        marker.setIcon({ path: google.maps.SymbolPath.CIRCLE, fillColor: '#444', fillOpacity: 0.5, strokeColor: '#222', strokeWeight: 1, scale: 8 });
+        marker.setLabel({ text: `${pn.severity}${pn.dir}`, color: '#666', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: '700', fontSize: '9px' });
+        marker.setZIndex(1);
+      } else if (i === idx) {
+        // 次のコーナー：大きく強調
+        marker.setIcon({ path: google.maps.SymbolPath.CIRCLE, fillColor: color, fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2.5, scale: 18 });
+        marker.setLabel({ text: `${pn.severity}${pn.dir}`, color: '#0a0a0a', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: '900', fontSize: '13px' });
+        marker.setZIndex(10);
+      } else {
+        // 未来のコーナー：通常
+        marker.setIcon({ path: google.maps.SymbolPath.CIRCLE, fillColor: color, fillOpacity: 1, strokeColor: '#0a0a0a', strokeWeight: 1.5, scale: 14 });
+        marker.setLabel({ text: `${pn.severity}${pn.dir}`, color: '#0a0a0a', fontFamily: 'Barlow Condensed, sans-serif', fontWeight: '900', fontSize: '11px' });
+        marker.setZIndex(5);
+      }
+    } catch(e) {}
+  });
 }
 
 function startGPS() {
@@ -1140,12 +1177,12 @@ function startGPS() {
         }
       } catch(e) {}
     }
-    // Auto-advance: check distance to current pacenote
+    // Auto-advance: コーナーを通過したら（20m以内）次へ進む
     if (drivingState && drivingState.idx < drivingState.stage.pacenotes.length) {
       const pn = drivingState.stage.pacenotes[drivingState.idx];
       if (pn.lat && pn.lng) {
         const d = haversine(pos.coords.latitude, pos.coords.longitude, pn.lat, pn.lng);
-        if (d < 40) { nextCornerAuto(); }
+        if (d < 20) { nextCornerAuto(); }
       }
     }
   }, () => {
@@ -1198,11 +1235,12 @@ function updateDriveUI() {
 let lastAutoAdvance = 0;
 function nextCornerAuto() {
   const now = Date.now();
-  if (now - lastAutoAdvance < 5000) return;
+  if (now - lastAutoAdvance < 3000) return;
   lastAutoAdvance = now;
   if (drivingState.idx < drivingState.totalCorners) {
     drivingState.idx++;
     updateDriveUI();
+    updateDriveCornerMarkers();
     speakCurrentCorner();
   }
 }
@@ -1211,6 +1249,7 @@ function nextCornerManual() {
   if (drivingState.idx < drivingState.totalCorners) {
     drivingState.idx++;
     updateDriveUI();
+    updateDriveCornerMarkers();
     speakCurrentCorner();
   }
 }
@@ -1218,7 +1257,7 @@ function repeatCurrent() { speakCurrentCorner(); }
 function stopDriving() {
   stopGPS();
   window.speechSynthesis && window.speechSynthesis.cancel();
-  driveMap = null; driveMarker = null;
+  driveMap = null; driveMarker = null; driveCornerMarkers = [];
   showScreen('home');
 }
 
@@ -1227,19 +1266,26 @@ function speakCurrentCorner() {
   if (!drivingState || !window.speechSynthesis) return;
   const ds = drivingState;
   const i = ds.idx;
+
   if (i >= ds.totalCorners) { speak('フィニッシュ'); return; }
+
+  // i = 次に来るコーナー（通過後に予告する）
   const pn = ds.stage.pacenotes[i];
   const dir = pn.dir === 'L' ? 'レフト' : 'ライト';
-  const sev = pn.severity;
-  let msg = `${sev} ${dir}`;
-  if (pn.note) msg += `、${pn.note}`;
-  // Next
-  if (i + 1 < ds.totalCorners) {
-    const next = ds.stage.pacenotes[i + 1];
-    const nextDir = next.dir === 'L' ? 'レフト' : 'ライト';
-    const d = Math.round((next.dist - pn.dist) / 10) * 10; // 10m単位に丸め
-    msg += `、${d}、${next.severity} ${nextDir}`; // 「メートル」なし
+
+  // 前のコーナーからの距離を読む（i=0のときはstartからの距離）
+  let approachDist;
+  if (i === 0) {
+    approachDist = pn.dist; // スタートから最初のコーナーまで
+  } else {
+    const prev = ds.stage.pacenotes[i - 1];
+    approachDist = pn.dist - prev.dist;
   }
+  const d = Math.round(approachDist / 10) * 10;
+
+  let msg = `${d}、${pn.severity} ${dir}`;
+  if (pn.note) msg += `、${pn.note}`;
+
   speak(msg);
 }
 
