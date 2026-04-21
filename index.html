@@ -373,7 +373,7 @@
   </div>
   <button class="start-btn" id="startBtn" disabled onclick="startDriving()">▶ START STAGE</button>
   <div style="text-align:center;padding:6px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:1px">
-    PACENOTE v1.2 · 2026-04-21 01:35 UTC
+    PACENOTE v1.2 · 2026-04-21 01:45 UTC
   </div>
 </div>
 
@@ -871,7 +871,7 @@ async function analyzeRoute() {
 // ── PACENOTE EXTRACTION ──
 function extractPacenotes(path) {
   const notes = [];
-  const MIN_ANGLE = 15;
+  const MIN_ANGLE = 8; // 緩いカーブも検出
   let dist = 0;
 
   for (let i = 1; i < path.length - 1; i++) {
@@ -947,7 +947,7 @@ function radiusToSeverity(radius, absAngle) {
   else if (absAngle >= 70)  sevByAngle = 3;
   else if (absAngle >= 50)  sevByAngle = 4;
   else if (absAngle >= 30)  sevByAngle = 5;
-  else                      sevByAngle = 6;
+  else                      sevByAngle = 6; // 8〜30°も6として扱う
 
   // 厳しい方（数字が小さい方）を採用
   return Math.min(sevByRadius, sevByAngle);
