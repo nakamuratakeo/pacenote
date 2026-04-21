@@ -373,7 +373,7 @@
   </div>
   <button class="start-btn" id="startBtn" disabled onclick="startDriving()">▶ START STAGE</button>
   <div style="text-align:center;padding:6px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:1px">
-    PACENOTE v1.2 · 2026-04-21 01:25 UTC
+    PACENOTE v1.2 · 2026-04-21 01:35 UTC
   </div>
 </div>
 
@@ -887,7 +887,7 @@ function extractPacenotes(path) {
 
     if (Math.abs(angle) < MIN_ANGLE) continue;
 
-    const dir = angle < 0 ? 'R' : 'L';
+    const dir = angle > 0 ? 'R' : 'L';
 
     // 曲率半径を計算（3点外接円の半径）
     const radius = circumRadius(p0, p1, p2);
