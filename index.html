@@ -373,7 +373,7 @@
   </div>
   <button class="start-btn" id="startBtn" disabled onclick="startDriving()">▶ START STAGE</button>
   <div style="text-align:center;padding:6px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:1px">
-    PACENOTE v1.2 · 2026-04-21 01:10 UTC
+    PACENOTE v1.2 · 2026-04-21 01:25 UTC
   </div>
 </div>
 
@@ -503,6 +503,7 @@ let watchId = null;
 let map = null, directionsService = null, directionsRenderer = null;
 let mapsLoaded = false;
 let wpMarkers = [];
+let pnMarkers = []; // ペースノートマーカー
 let driveMap = null, driveMarker = null, drivePolyline = null;
 
 // ── INIT ──
@@ -693,6 +694,7 @@ function resetEditor() {
     tempWaypoints = [];
     tempPacenotes = [];
     clearWpMarkers();
+    pnMarkers.forEach(m => m.setMap(null)); pnMarkers = [];
     try {
       if (directionsRenderer && mapsLoaded) {
         directionsRenderer.set('directions', null);
@@ -746,6 +748,45 @@ function addWpMarker(wp, num) {
 function clearWpMarkers() {
   wpMarkers.forEach(m => m.setMap(null));
   wpMarkers = [];
+}
+
+// 重大度カラーコード（マーカー用）
+const SEV_COLORS = ['#ff4400','#ff8800','#ffcc00','#88ff00','#00ffcc','#0088ff'];
+
+function renderPnMarkers() {
+  // 既存のペースノートマーカーをクリア
+  pnMarkers.forEach(m => m.setMap(null));
+  pnMarkers = [];
+  if (!mapsLoaded || !map) return;
+  tempPacenotes.forEach((pn, i) => {
+    if (!pn.lat || !pn.lng) return;
+    const color = SEV_COLORS[(pn.severity - 1)] || '#ffffff';
+    const label = `${pn.severity}${pn.dir}`;
+    const marker = new google.maps.Marker({
+      position: { lat: pn.lat, lng: pn.lng },
+      map,
+      label: {
+        text: label,
+        color: '#0a0a0a',
+        fontFamily: 'Barlow Condensed, sans-serif',
+        fontWeight: '900',
+        fontSize: '11px'
+      },
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        fillColor: color,
+        fillOpacity: 1,
+        strokeColor: '#0a0a0a',
+        strokeWeight: 1.5,
+        scale: 14
+      },
+      zIndex: 5,
+      title: `${i+1}: ${pn.severity}${pn.dir} ${pn.dist}m`
+    });
+    // タップでそのコーナーのEDITモーダルを開く
+    marker.addListener('click', () => openEditModal(i));
+    pnMarkers.push(marker);
+  });
 }
 
 function addCurrentLocation() {
@@ -941,7 +982,7 @@ function generateDemoPacenotes() {
 function renderPacenotes() {
   const el = document.getElementById('pacenoteList');
   document.getElementById('pnCount').textContent = `(${tempPacenotes.length})`;
-  if (tempPacenotes.length === 0) { el.innerHTML = ''; return; }
+  if (tempPacenotes.length === 0) { el.innerHTML = ''; renderPnMarkers(); return; }
   el.innerHTML = tempPacenotes.map((pn, i) => `
     <div class="pn-item">
       <div class="pn-dist">${pn.dist}m</div>
@@ -951,6 +992,7 @@ function renderPacenotes() {
       <button class="pn-edit-btn" onclick="openEditModal(${i})">EDIT</button>
     </div>
   `).join('');
+  renderPnMarkers();
 }
 
 // ── SAVE STAGE ──
