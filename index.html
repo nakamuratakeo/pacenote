@@ -373,7 +373,7 @@
   </div>
   <button class="start-btn" id="startBtn" disabled onclick="startDriving()">▶ START STAGE</button>
   <div style="text-align:center;padding:6px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:1px">
-    PACENOTE v1.1 · 2026-04-21 01:00 UTC
+    PACENOTE v1.2 · 2026-04-21 01:10 UTC
   </div>
 </div>
 
@@ -465,7 +465,7 @@
 <div class="modal-overlay hidden" id="editModal" onclick="closeModal(event)">
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-title">EDIT PACENOTE</div>
-    <div class="modal-title" style="font-size:10px;margin-bottom:8px;color:var(--text-dim)">重大度（1=ヘアピン ↔ 5=緩いカーブ）</div>
+    <div class="modal-title" style="font-size:10px;margin-bottom:8px;color:var(--text-dim)">重大度（1=ヘアピン ↔ 6=緩いカーブ）</div>
     <div class="sev-picker" id="sevPicker">
       <button class="sev-btn sev-1" data-sev="1" onclick="selectSev(1)"><span>1</span></button>
       <button class="sev-btn sev-2" data-sev="2" onclick="selectSev(2)"><span>2</span></button>
@@ -830,9 +830,8 @@ async function analyzeRoute() {
 // ── PACENOTE EXTRACTION ──
 function extractPacenotes(path) {
   const notes = [];
-  const MIN_ANGLE = 18; // 閾値を引き上げ（緩いカーブをさらに除外）
+  const MIN_ANGLE = 15;
   let dist = 0;
-  let lastCornerDist = 0; // 直前のコーナーからの距離追跡
 
   for (let i = 1; i < path.length - 1; i++) {
     const p0 = path[i - 1], p1 = path[i], p2 = path[i + 1];
@@ -845,31 +844,72 @@ function extractPacenotes(path) {
     const segDist = google.maps.geometry.spherical.computeDistanceBetween(p0, p1);
     dist += segDist;
 
-    if (Math.abs(angle) >= MIN_ANGLE) {
-      let sev = angleToSeverity(Math.abs(angle));
-      if (sev >= 6) continue; // 6（緩すぎるカーブ）は除外
+    if (Math.abs(angle) < MIN_ANGLE) continue;
 
-      const dir = angle < 0 ? 'R' : 'L';
+    const dir = angle < 0 ? 'R' : 'L';
 
-      // 直前コーナーからの距離が短い → 加速できていない → 1段階タイトに
-      const approachDist = notes.length > 0 ? Math.round(dist) - notes[notes.length - 1].dist : 999;
-      if (approachDist < 80 && sev > 1) {
-        sev = Math.max(1, sev - 1);
-      }
+    // 曲率半径を計算（3点外接円の半径）
+    const radius = circumRadius(p0, p1, p2);
 
-      // 近接コーナーのマージ（30m以内は統合）
-      if (notes.length > 0 && Math.round(dist) - notes[notes.length - 1].dist < 30) {
-        const prev = notes[notes.length - 1];
-        if (sev < prev.severity) { // 数字が小さいほどタイト
-          prev.severity = sev; prev.dir = dir;
-        }
-        continue;
-      }
+    // 角度と半径の複合で重大度を決定
+    let sev = radiusToSeverity(radius, Math.abs(angle));
 
-      notes.push({ dist: Math.round(dist), severity: sev, dir, note: '', lat: p1.lat(), lng: p1.lng() });
+    // 直前コーナーからの進入距離が短い → 加速できていない → 1段階タイトに
+    const approachDist = notes.length > 0 ? Math.round(dist) - notes[notes.length - 1].dist : 999;
+    if (approachDist < 80 && sev > 1) {
+      sev = Math.max(1, sev - 1);
     }
+
+    // 近接コーナーのマージ（30m以内は統合）
+    if (notes.length > 0 && Math.round(dist) - notes[notes.length - 1].dist < 30) {
+      const prev = notes[notes.length - 1];
+      if (sev < prev.severity) {
+        prev.severity = sev; prev.dir = dir;
+      }
+      continue;
+    }
+
+    notes.push({ dist: Math.round(dist), severity: sev, dir, note: '', lat: p1.lat(), lng: p1.lng() });
   }
   return notes;
+}
+
+// 3点の外接円半径（メートル）
+function circumRadius(p0, p1, p2) {
+  try {
+    const a = google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+    const b = google.maps.geometry.spherical.computeDistanceBetween(p0, p2);
+    const c = google.maps.geometry.spherical.computeDistanceBetween(p0, p1);
+    const s = (a + b + c) / 2;
+    const area = Math.sqrt(Math.max(0, s * (s-a) * (s-b) * (s-c)));
+    if (area < 0.001) return 9999;
+    return (a * b * c) / (4 * area);
+  } catch(e) { return 9999; }
+}
+
+// 曲率半径＋角度から重大度を決定（1=ヘアピン、6=緩いカーブ）
+function radiusToSeverity(radius, absAngle) {
+  // 半径が小さい＝タイト、角度が大きい＝タイト → 小さい数字（厳しい）
+  // 半径ベースの判定
+  let sevByRadius;
+  if      (radius < 8)   sevByRadius = 1;
+  else if (radius < 15)  sevByRadius = 2;
+  else if (radius < 30)  sevByRadius = 3;
+  else if (radius < 60)  sevByRadius = 4;
+  else if (radius < 120) sevByRadius = 5;
+  else                   sevByRadius = 6;
+
+  // 角度ベースの判定
+  let sevByAngle;
+  if      (absAngle >= 130) sevByAngle = 1;
+  else if (absAngle >= 100) sevByAngle = 2;
+  else if (absAngle >= 70)  sevByAngle = 3;
+  else if (absAngle >= 50)  sevByAngle = 4;
+  else if (absAngle >= 30)  sevByAngle = 5;
+  else                      sevByAngle = 6;
+
+  // 厳しい方（数字が小さい方）を採用
+  return Math.min(sevByRadius, sevByAngle);
 }
 
 function bearing(a, b) {
@@ -879,16 +919,8 @@ function bearing(a, b) {
   const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
   return Math.atan2(y, x) * 180 / Math.PI;
 }
-function angleToSeverity(abs) {
-  if (abs >= 130) return 1; // ヘアピン
-  if (abs >= 100) return 2; // タイト
-  if (abs >= 70)  return 3; // ミディアムタイト
-  if (abs >= 50)  return 4; // ミディアム
-  if (abs >= 30)  return 5; // 緩め
-  return 6;                  // 非常に緩い（除外対象）
-}
 function angleToSeverityRaw(sev) {
-  return [130, 100, 70, 50, 30, 18][sev - 1] || 18;
+  return [130, 100, 70, 50, 30, 15][sev - 1] || 15;
 }
 
 function generateDemoPacenotes() {
@@ -898,7 +930,7 @@ function generateDemoPacenotes() {
   for (let i = 0; i < 12; i++) {
     d += Math.floor(Math.random() * 200 + 80);
     notes.push({
-      dist: d, severity: Math.floor(Math.random() * 5) + 1,
+      dist: d, severity: Math.floor(Math.random() * 6) + 1,
       dir: dirs[Math.floor(Math.random() * 2)], note: '',
       lat: 35 + Math.random() * 0.01, lng: 135 + Math.random() * 0.01
     });
