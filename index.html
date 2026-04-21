@@ -358,12 +358,15 @@
 <div class="screen" id="home">
   <div class="header">
     <div class="logo">PACE<span>NOTE</span></div>
-    <button class="header-btn" onclick="resetEditor(); showScreen('editor');">＋ NEW</button>
+    <div style="display:flex;gap:8px">
+      <button class="header-btn" onclick="document.getElementById('apiModal').classList.remove('hidden')" style="color:var(--text-dim)">⚙ API</button>
+      <button class="header-btn" onclick="showScreen('editor'); setTimeout(resetEditor, 50);">＋ NEW</button>
+    </div>
   </div>
   <div class="home-content" id="stageList">
     <div class="section-label">STAGES</div>
     <div id="stageCards"></div>
-    <button class="add-stage-btn" onclick="resetEditor(); showScreen('editor');">＋ ステージを追加</button>
+    <button class="add-stage-btn" onclick="showScreen('editor'); setTimeout(resetEditor, 50);">＋ ステージを追加</button>
   </div>
   <button class="start-btn" id="startBtn" disabled onclick="startDriving()">▶ START STAGE</button>
 </div>
@@ -484,13 +487,14 @@ let stages = JSON.parse(localStorage.getItem('pn_stages') || '[]');
 let googleApiKey = localStorage.getItem('pn_gmaps_key') || '';
 let currentStageIdx = -1;
 let editingPnIdx = -1;
-let editingStageIdx = -1; // -1 = new stage
+let editingStageIdx = -1;
 let tempWaypoints = [];
 let tempPacenotes = [];
 let drivingState = null;
 let watchId = null;
 let map = null, directionsService = null, directionsRenderer = null;
 let mapsLoaded = false;
+let wpMarkers = [];
 
 // ── INIT ──
 window.onload = () => {
@@ -509,7 +513,13 @@ function saveApiKey() {
   googleApiKey = k;
   localStorage.setItem('pn_gmaps_key', k);
   document.getElementById('apiModal').classList.add('hidden');
-  initMaps();
+  if (mapsLoaded) {
+    // すでに読み込み済みならページをリロードして再適用
+    showToast('APIキーを更新しました。再読み込みします...');
+    setTimeout(() => location.reload(), 1200);
+  } else {
+    initMaps();
+  }
 }
 function skipApiKey() {
   document.getElementById('apiModal').classList.add('hidden');
@@ -570,10 +580,14 @@ window.onMapsReady = () => {
 
 // ── SCREEN NAV ──
 function showScreen(id) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
-  document.getElementById(id).classList.remove('hidden');
-  if (id === 'editor' && mapsLoaded && map) {
-    setTimeout(() => google.maps.event.trigger(map, 'resize'), 100);
+  try {
+    document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+    document.getElementById(id).classList.remove('hidden');
+    if (id === 'editor' && mapsLoaded && map) {
+      setTimeout(() => { try { google.maps.event.trigger(map, 'resize'); } catch(e) {} }, 100);
+    }
+  } catch(e) {
+    console.error('showScreen error:', e);
   }
 }
 
@@ -655,18 +669,29 @@ function editStage(e, i) {
 
 // ── EDITOR ──
 function resetEditor() {
-  editingStageIdx = -1;
-  tempWaypoints = [];
-  tempPacenotes = [];
-  clearWpMarkers();
-  try { if (directionsRenderer) directionsRenderer.setMap(null); } catch(e) {}
-  try { if (directionsRenderer) directionsRenderer.setMap(map); } catch(e) {}
-  document.getElementById('stageName').value = '';
-  document.getElementById('mapSearchInput').value = '';
-  renderWaypoints();
-  renderPacenotes();
-  document.getElementById('pacenoteSection').style.display = 'none';
-  document.getElementById('saveStageBtn').style.display = 'none';
+  try {
+    editingStageIdx = -1;
+    tempWaypoints = [];
+    tempPacenotes = [];
+    clearWpMarkers();
+    try {
+      if (directionsRenderer && mapsLoaded) {
+        directionsRenderer.set('directions', null);
+      }
+    } catch(e) {}
+    const nameEl = document.getElementById('stageName');
+    if (nameEl) nameEl.value = '';
+    const searchEl = document.getElementById('mapSearchInput');
+    if (searchEl) searchEl.value = '';
+    renderWaypoints();
+    renderPacenotes();
+    const pnSection = document.getElementById('pacenoteSection');
+    if (pnSection) pnSection.style.display = 'none';
+    const saveBtn = document.getElementById('saveStageBtn');
+    if (saveBtn) saveBtn.style.display = 'none';
+  } catch(e) {
+    console.error('resetEditor error:', e);
+  }
 }
 
 function searchPlace() {
@@ -686,8 +711,9 @@ function searchPlace() {
 }
 
 // Enterキーでも検索
-document.getElementById('mapSearchInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter') searchPlace();
+document.addEventListener('DOMContentLoaded', () => {
+  const el = document.getElementById('mapSearchInput');
+  if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') searchPlace(); });
 });
 function addWpMarker(wp, num) {
   if (!mapsLoaded || !map) return;
