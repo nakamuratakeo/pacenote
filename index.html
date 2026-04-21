@@ -198,7 +198,10 @@
 
   /* ── DRIVING SCREEN ── */
   #driving { background: var(--bg); }
-  .drive-top { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; gap: 16px; position: relative; }
+  .drive-top { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 12px 16px; gap: 10px; position: relative; overflow-y: auto; }
+
+  /* drive map */
+  #driveMap { width: 100%; max-width: 340px; height: 160px; border-radius: 3px; border: 1px solid var(--border); flex-shrink: 0; }
 
   /* current corner display */
   .corner-display {
@@ -370,7 +373,7 @@
   </div>
   <button class="start-btn" id="startBtn" disabled onclick="startDriving()">▶ START STAGE</button>
   <div style="text-align:center;padding:6px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:1px">
-    PACENOTE v1.0 · 2026-04-21 00:23 UTC
+    PACENOTE v1.1 · 2026-04-21 00:45 UTC
   </div>
 </div>
 
@@ -436,6 +439,8 @@
       <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
     </div>
 
+    <div id="driveMap"></div>
+
     <div class="corner-display">
       <div class="corner-label">NEXT CORNER</div>
       <div class="corner-big sev-3" id="cornerSev">—</div>
@@ -498,6 +503,7 @@ let watchId = null;
 let map = null, directionsService = null, directionsRenderer = null;
 let mapsLoaded = false;
 let wpMarkers = [];
+let driveMap = null, driveMarker = null, drivePolyline = null;
 
 // ── INIT ──
 window.onload = () => {
@@ -977,8 +983,53 @@ function startDriving() {
   };
   showScreen('driving');
   updateDriveUI();
+  initDriveMap(stage);
   startGPS();
   speakCurrentCorner();
+}
+
+function initDriveMap(stage) {
+  if (!mapsLoaded) return;
+  try {
+    const el = document.getElementById('driveMap');
+    // 初期中心：最初のWPかペースノート
+    const first = stage.waypoints[0] || (stage.pacenotes[0] ? { lat: stage.pacenotes[0].lat, lng: stage.pacenotes[0].lng } : { lat: 35.6895, lng: 139.6917 });
+    driveMap = new google.maps.Map(el, {
+      zoom: 16, center: first,
+      mapTypeId: 'roadmap',
+      styles: darkMapStyle(),
+      disableDefaultUI: true,
+      gestureHandling: 'none', // 走行中は操作不要
+      zoomControl: false
+    });
+    // ルートライン表示
+    if (stage.waypoints.length >= 2) {
+      const ds = new google.maps.DirectionsService();
+      const dr = new google.maps.DirectionsRenderer({
+        map: driveMap, suppressMarkers: true,
+        polylineOptions: { strokeColor: '#e8ff00', strokeWeight: 3, strokeOpacity: 0.7 }
+      });
+      ds.route({
+        origin: stage.waypoints[0],
+        destination: stage.waypoints[stage.waypoints.length - 1],
+        waypoints: stage.waypoints.slice(1, -1).map(wp => ({ location: wp, stopover: false })),
+        travelMode: google.maps.TravelMode.DRIVING
+      }, (result, status) => {
+        if (status === 'OK') dr.setDirections(result);
+      });
+    }
+    // 現在地マーカー（進行方向の矢印アイコン）
+    driveMarker = new google.maps.Marker({
+      map: driveMap,
+      icon: {
+        path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+        fillColor: '#e8ff00', fillOpacity: 1,
+        strokeColor: '#0a0a0a', strokeWeight: 1.5,
+        scale: 5, rotation: 0
+      },
+      zIndex: 10
+    });
+  } catch(e) { console.error('initDriveMap error:', e); }
 }
 
 function startGPS() {
@@ -990,6 +1041,21 @@ function startGPS() {
     txt.textContent = `${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`;
     const spd = pos.coords.speed;
     document.getElementById('speedVal').textContent = spd !== null ? Math.round(spd * 3.6) : '--';
+
+    // 走行地図の現在地を更新
+    if (driveMap && driveMarker) {
+      try {
+        const latlng = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        driveMarker.setPosition(latlng);
+        driveMap.panTo(latlng);
+        // 進行方向を矢印に反映
+        if (pos.coords.heading !== null && !isNaN(pos.coords.heading)) {
+          const icon = driveMarker.getIcon();
+          icon.rotation = pos.coords.heading;
+          driveMarker.setIcon(icon);
+        }
+      } catch(e) {}
+    }
     // Auto-advance: check distance to current pacenote
     if (drivingState && drivingState.idx < drivingState.stage.pacenotes.length) {
       const pn = drivingState.stage.pacenotes[drivingState.idx];
@@ -1068,6 +1134,7 @@ function repeatCurrent() { speakCurrentCorner(); }
 function stopDriving() {
   stopGPS();
   window.speechSynthesis && window.speechSynthesis.cancel();
+  driveMap = null; driveMarker = null;
   showScreen('home');
 }
 
