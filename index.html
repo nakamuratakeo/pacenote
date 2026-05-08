@@ -353,6 +353,7 @@
     <div class="api-desc">ルート解析にGoogle Maps APIキーが必要です。<br><a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent)">Google Cloud Console</a>で取得できます。<br><br>必要なAPI: Maps JavaScript API, Directions API, Roads API</div>
     <input class="api-input" id="apiKeyInput" placeholder="AIza..." type="password">
     <button class="api-btn" onclick="saveApiKey()">保存して開始</button>
+    <button class="api-btn" onclick="copyBookmarkUrl()" style="background:transparent;border:1px solid var(--accent);color:var(--accent);margin-top:8px">📋 ブックマーク用URLをコピー</button>
     <span class="api-skip" onclick="skipApiKey()">スキップ（デモモード）</span>
   </div>
 </div>
@@ -373,7 +374,7 @@
   </div>
   <button class="start-btn" id="startBtn" disabled onclick="startDriving()">▶ START STAGE</button>
   <div style="text-align:center;padding:6px;font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:1px">
-    PACENOTE v1.3 · 2026-04-21 02:20 UTC
+    PACENOTE v1.4 · 2026-04-21 02:50 UTC
   </div>
 </div>
 
@@ -508,6 +509,14 @@ let driveMap = null, driveMarker = null, drivePolyline = null, driveCornerMarker
 
 // ── INIT ──
 window.onload = () => {
+  // URLパラメータ ?key=AIza... からAPIキーを取得
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlKey = urlParams.get('key');
+  if (urlKey) {
+    googleApiKey = urlKey;
+    localStorage.setItem('pn_gmaps_key', urlKey);
+  }
+
   if (!googleApiKey) {
     document.getElementById('apiModal').classList.remove('hidden');
   } else {
@@ -516,6 +525,19 @@ window.onload = () => {
   }
   renderStageList();
 };
+
+function copyBookmarkUrl() {
+  const k = document.getElementById('apiKeyInput').value.trim() || googleApiKey;
+  if (!k) { showToast('先にAPIキーを入力してください'); return; }
+  const base = window.location.origin + window.location.pathname;
+  const url = `${base}?key=${k}`;
+  navigator.clipboard.writeText(url).then(() => {
+    showToast('URLをコピーしました！ブックマークに追加してください');
+  }).catch(() => {
+    // clipboardが使えない場合はpromptで表示
+    prompt('このURLをコピーしてブックマークに追加してください:', url);
+  });
+}
 
 function saveApiKey() {
   const k = document.getElementById('apiKeyInput').value.trim();
@@ -545,15 +567,41 @@ function initMaps() {
 }
 window.onMapsReady = () => {
   mapsLoaded = true;
-  document.getElementById('map').innerHTML = '';
-  map = new google.maps.Map(document.getElementById('map'), {
+  directionsService = new google.maps.DirectionsService();
+  // 地図はエディター画面を開いたときに初期化する
+  initEditorMap();
+
+  // 地名検索 Autocomplete（エディター表示後に設定）
+  const searchInput = document.getElementById('mapSearchInput');
+  if (searchInput) {
+    const autocomplete = new google.maps.places.Autocomplete(searchInput, {
+      fields: ['geometry', 'name'],
+      componentRestrictions: { country: 'jp' }
+    });
+    autocomplete.addListener('place_changed', () => {
+      const place = autocomplete.getPlace();
+      if (!place.geometry) { showToast('場所が見つかりません'); return; }
+      if (map) { map.panTo(place.geometry.location); map.setZoom(15); }
+      showToast(`「${place.name}」に移動しました`);
+    });
+  }
+
+  // 地図タップでWP追加（mapが初期化されてから設定）
+};
+
+function initEditorMap() {
+  if (!mapsLoaded) return;
+  if (map) return; // すでに初期化済み
+  const el = document.getElementById('map');
+  if (!el) return;
+  el.innerHTML = '';
+  map = new google.maps.Map(el, {
     zoom: 14, center: { lat: 35.6895, lng: 139.6917 },
     mapTypeId: 'roadmap',
     styles: darkMapStyle(),
     disableDefaultUI: true, zoomControl: true,
     gestureHandling: 'greedy'
   });
-  directionsService = new google.maps.DirectionsService();
   directionsRenderer = new google.maps.DirectionsRenderer({
     map, suppressMarkers: true,
     polylineOptions: { strokeColor: '#e8ff00', strokeWeight: 3 }
@@ -563,21 +611,6 @@ window.onMapsReady = () => {
       map.setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude });
     });
   }
-
-  // 地名検索 Autocomplete
-  const searchInput = document.getElementById('mapSearchInput');
-  const autocomplete = new google.maps.places.Autocomplete(searchInput, {
-    fields: ['geometry', 'name'],
-    componentRestrictions: { country: 'jp' }
-  });
-  autocomplete.addListener('place_changed', () => {
-    const place = autocomplete.getPlace();
-    if (!place.geometry) { showToast('場所が見つかりません'); return; }
-    map.panTo(place.geometry.location);
-    map.setZoom(15);
-    showToast(`「${place.name}」に移動しました`);
-  });
-
   // 地図タップでWP追加
   map.addListener('click', (e) => {
     const wp = { lat: e.latLng.lat(), lng: e.latLng.lng() };
@@ -586,25 +619,23 @@ window.onMapsReady = () => {
     renderWaypoints();
     showToast(`WP ${tempWaypoints.length} を追加`);
   });
-};
+}
 
 // ── SCREEN NAV ──
 function showScreen(id) {
   try {
     document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
     document.getElementById(id).classList.remove('hidden');
-    if (id === 'editor' && mapsLoaded && map) {
-      // 複数回タイミングをずらしてリサイズを確実に反映
-      setTimeout(() => { try { google.maps.event.trigger(map, 'resize'); } catch(e) {} }, 50);
-      setTimeout(() => { try { google.maps.event.trigger(map, 'resize'); } catch(e) {} }, 200);
+    if (id === 'editor' && mapsLoaded) {
       setTimeout(() => {
         try {
+          initEditorMap();
           google.maps.event.trigger(map, 'resize');
-          // 高さも明示的にリセット
           const mapEl = document.getElementById('map');
           if (mapEl) mapEl.style.height = '320px';
         } catch(e) {}
-      }, 400);
+      }, 100);
+      setTimeout(() => { try { google.maps.event.trigger(map, 'resize'); } catch(e) {} }, 300);
     }
   } catch(e) {
     console.error('showScreen error:', e);
