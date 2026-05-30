@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#060810">
+<title>RALLY TOOLS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+:root {
+  --bg: #060810;
+  --surface: #0c101a;
+  --border: #151d2e;
+  --text: #a8bcd0;
+  --muted: #3a4f65;
+  --orange: #f06020;
+  --cyan: #00d4f0;
+  --green: #00e880;
+  --orb: 'Orbitron', sans-serif;
+  --mono: 'Share Tech Mono', monospace;
+  --safe-bot: env(safe-area-inset-bottom, 0px);
+}
+
+html, body {
+  height: 100%; width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  overflow: hidden;
+  user-select: none; -webkit-user-select: none;
+}
+
+/* ── BACKGROUND ── */
+.bg-grid {
+  position: fixed; inset: 0; pointer-events: none;
+  background-image:
+    linear-gradient(rgba(0,212,240,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,240,0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 50%, black 30%, transparent 100%);
+}
+
+.bg-glow {
+  position: fixed; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse 60% 40% at 30% 60%, rgba(240,96,32,0.07) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 40% at 70% 40%, rgba(0,212,240,0.06) 0%, transparent 70%);
+}
+
+/* scan lines */
+body::after {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 50;
+  background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.07) 3px, rgba(0,0,0,0.07) 4px);
+}
+
+/* ── LAYOUT ── */
+#wrap {
+  position: relative; z-index: 10;
+  height: 100dvh;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 24px 20px;
+  padding-bottom: calc(24px + var(--safe-bot));
+  gap: 0;
+}
+
+/* ── LOGO ── */
+.logo-area {
+  text-align: center;
+  margin-bottom: 8px;
+  animation: fadeUp .8s ease both;
+}
+
+.logo-sup {
+  font-size: 10px; letter-spacing: 6px; color: var(--muted);
+  margin-bottom: 10px; display: block;
+}
+
+.logo-main {
+  font-family: var(--orb);
+  font-size: clamp(28px, 8vw, 44px);
+  font-weight: 900;
+  letter-spacing: 4px;
+  line-height: 1;
+  background: linear-gradient(135deg, #fff 0%, var(--cyan) 50%, var(--orange) 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 24px rgba(0,212,240,0.3));
+}
+
+.logo-sub {
+  font-size: 11px; letter-spacing: 4px; color: var(--muted);
+  margin-top: 8px; display: block;
+}
+
+/* ── DIVIDER ── */
+.divider {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; max-width: 360px;
+  margin: 20px 0 24px;
+  animation: fadeUp .8s .1s ease both;
+}
+.divider-line { flex:1; height: 1px; background: var(--border); }
+.divider-dot {
+  width: 4px; height: 4px; border-radius: 50%;
+  background: var(--cyan); opacity: .5;
+}
+
+/* ── CARDS ── */
+.cards {
+  display: flex; flex-direction: column;
+  gap: 14px; width: 100%; max-width: 360px;
+}
+
+.card {
+  display: block;
+  text-decoration: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px 22px;
+  position: relative; overflow: hidden;
+  transition: border-color .25s, transform .2s;
+  cursor: pointer;
+  -webkit-user-select: none;
+}
+
+.card::before {
+  content: '';
+  position: absolute; inset: 0;
+  opacity: 0; transition: opacity .25s;
+  border-radius: 14px;
+}
+
+.card-pacenote::before {
+  background: radial-gradient(ellipse 80% 80% at 0% 50%, rgba(0,232,128,0.1) 0%, transparent 70%);
+}
+.card-logger::before {
+  background: radial-gradient(ellipse 80% 80% at 0% 50%, rgba(240,96,32,0.1) 0%, transparent 70%);
+}
+
+.card:hover { transform: translateY(-2px); }
+.card:hover::before { opacity: 1; }
+.card-pacenote:hover { border-color: rgba(0,232,128,0.35); }
+.card-logger:hover  { border-color: rgba(240,96,32,0.35); }
+
+.card:active { transform: scale(0.98); }
+
+/* accent stripe */
+.card::after {
+  content: '';
+  position: absolute; left: 0; top: 16px; bottom: 16px;
+  width: 3px; border-radius: 0 2px 2px 0;
+  transition: height .2s;
+}
+.card-pacenote::after { background: var(--green); }
+.card-logger::after   { background: var(--orange); }
+
+.card-inner {
+  display: flex; align-items: center; gap: 16px;
+}
+
+.card-icon {
+  font-size: 32px; line-height: 1; flex-shrink: 0;
+  filter: drop-shadow(0 0 8px currentColor);
+}
+
+.card-text { flex: 1; }
+
+.card-title {
+  font-family: var(--orb);
+  font-size: 16px; font-weight: 700;
+  letter-spacing: 2px; line-height: 1;
+  margin-bottom: 6px;
+}
+.card-pacenote .card-title { color: var(--green); }
+.card-logger .card-title   { color: var(--orange); }
+
+.card-desc {
+  font-size: 11px; color: var(--muted);
+  letter-spacing: 1px; line-height: 1.6;
+}
+
+.card-arrow {
+  font-size: 20px; color: var(--muted);
+  transition: transform .2s, color .2s;
+  flex-shrink: 0;
+}
+.card:hover .card-arrow {
+  transform: translateX(4px);
+}
+.card-pacenote:hover .card-arrow { color: var(--green); }
+.card-logger:hover .card-arrow   { color: var(--orange); }
+
+/* badge */
+.card-badge {
+  position: absolute; top: 14px; right: 14px;
+  font-size: 8px; letter-spacing: 2px; padding: 3px 7px;
+  border-radius: 3px; font-family: var(--mono);
+}
+.card-pacenote .card-badge {
+  color: var(--green); border: 1px solid rgba(0,232,128,0.3);
+  background: rgba(0,232,128,0.07);
+}
+.card-logger .card-badge {
+  color: var(--orange); border: 1px solid rgba(240,96,32,0.3);
+  background: rgba(240,96,32,0.07);
+}
+
+/* animation stagger */
+.card:nth-child(1) { animation: fadeUp .7s .2s ease both; }
+.card:nth-child(2) { animation: fadeUp .7s .35s ease both; }
+
+/* ── FOOTER ── */
+.footer {
+  margin-top: 24px;
+  font-size: 10px; color: var(--muted);
+  letter-spacing: 2px; text-align: center;
+  animation: fadeUp .7s .5s ease both;
+}
+
+/* ── ANIMATIONS ── */
+@keyframes fadeUp {
+  from { opacity:0; transform: translateY(16px); }
+  to   { opacity:1; transform: translateY(0); }
+}
+
+/* ── TOUCH RIPPLE ── */
+.card .ripple {
+  position: absolute; border-radius: 50%;
+  transform: scale(0); animation: ripple .5s linear;
+  pointer-events: none; opacity: .2;
+}
+.card-pacenote .ripple { background: var(--green); }
+.card-logger .ripple   { background: var(--orange); }
+@keyframes ripple { to { transform: scale(4); opacity: 0; } }
+</style>
+</head>
+<body>
+
+<div class="bg-grid"></div>
+<div class="bg-glow"></div>
+
+<div id="wrap">
+
+  <div class="logo-area">
+    <span class="logo-sup">MOTORSPORT TOOLS</span>
+    <div class="logo-main">RALLY HQ</div>
+    <span class="logo-sub">SELECT YOUR TOOL</span>
+  </div>
+
+  <div class="divider">
+    <div class="divider-line"></div>
+    <div class="divider-dot"></div>
+    <div class="divider-line"></div>
+  </div>
+
+  <div class="cards">
+    <!-- PACENOTE -->
+    <a class="card card-pacenote" href="pacenote.html" onclick="ripple(event)">
+      <span class="card-badge">RALLY</span>
+      <div class="card-inner">
+        <div class="card-icon">🎙️</div>
+        <div class="card-text">
+          <div class="card-title">PACENOTE</div>
+          <div class="card-desc">
+            GPS読み上げコドライバー<br>
+            ヒルクライム・ラリー対応
+          </div>
+        </div>
+        <div class="card-arrow">›</div>
+      </div>
+    </a>
+
+    <!-- CIRCUIT LOGGER -->
+    <a class="card card-logger" href="circuit-logger.html" onclick="ripple(event)">
+      <span class="card-badge">CIRCUIT</span>
+      <div class="card-inner">
+        <div class="card-icon">🏁</div>
+        <div class="card-text">
+          <div class="card-title">CIRCUIT LOGGER</div>
+          <div class="card-desc">
+            GPS + Gセンサーロガー<br>
+            ラップタイム自動計測
+          </div>
+        </div>
+        <div class="card-arrow">›</div>
+      </div>
+    </a>
+  </div>
+
+  <div class="footer">nakamuratakeo · github.io/pacenote</div>
+
+</div>
+
+<script>
+function ripple(e) {
+  const card = e.currentTarget;
+  const r = document.createElement('span');
+  r.className = 'ripple';
+  const size = Math.max(card.offsetWidth, card.offsetHeight);
+  const rect = card.getBoundingClientRect();
+  r.style.cssText = `width:${size}px;height:${size}px;left:${e.clientX-rect.left-size/2}px;top:${e.clientY-rect.top-size/2}px`;
+  card.appendChild(r);
+  r.addEventListener('animationend', () => r.remove());
+}
+</script>
+</body>
+</html>
