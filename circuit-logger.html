@@ -219,18 +219,28 @@ canvas#gCanvas {
 @keyframes blink { 50% { opacity:0; } }
 
 /* SF Line status */
-.sf-status {
-  display: flex; align-items: center; gap: 8px;
-  padding: 10px 14px; border-radius: 8px;
-  background: var(--panel); border: 1px solid var(--border);
-  font-size: 11px; color: var(--muted);
+.sf-status-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
 }
-.sf-status.set { border-color: rgba(0,232,122,0.3); color: var(--green); }
+.sf-status {
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px 10px; border-radius: 8px;
+  background: var(--panel); border: 1px solid var(--border);
+  font-size: 10px; color: var(--muted); letter-spacing: 1px;
+}
+.sf-status.set-s { border-color: rgba(0,200,224,0.35); color: var(--cyan); }
+.sf-status.set-f { border-color: rgba(0,232,122,0.35); color: var(--green); }
 .sf-status-dot {
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--muted); flex-shrink: 0;
 }
-.sf-status.set .sf-status-dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.sf-status.set-s .sf-status-dot { background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
+.sf-status.set-f .sf-status-dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.sf-status-badge {
+  margin-left: auto; font-size: 9px;
+  padding: 2px 6px; border-radius: 3px;
+  background: rgba(255,255,255,0.05);
+}
 
 /* ══════════════════════════════════
    MAP PAGE
@@ -253,6 +263,26 @@ canvas#gCanvas {
   white-space: normal;
 }
 .map-instructions b { color: var(--orange); }
+/* Line mode tabs */
+.line-tabs {
+  position: absolute; top: 12px; left: 12px; right: 12px;
+  display: flex; gap: 8px; z-index: 500;
+}
+.line-tab {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 9px 10px;
+  background: rgba(8,12,16,0.92); border: 1px solid var(--border);
+  color: var(--muted); font-family: var(--mono); font-size: 11px; letter-spacing: 1px;
+  border-radius: 8px; cursor: pointer; backdrop-filter: blur(10px);
+  transition: all .2s;
+}
+.line-tab.active.s-mode { border-color: var(--cyan); color: var(--cyan); background: rgba(0,200,224,0.1); }
+.line-tab.active.f-mode { border-color: var(--green); color: var(--green); background: rgba(0,232,122,0.1); }
+.line-tab-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.line-tab-dot.s { background: var(--cyan); }
+.line-tab-dot.f { background: var(--green); }
 .map-panel {
   position: absolute; bottom: 0; left: 0; right: 0;
   background: rgba(8,12,16,0.95); border-top: 1px solid var(--border);
@@ -465,9 +495,17 @@ canvas.chart { width: 100%; height: 120px; display: block; }
     </button>
 
     <!-- SF Status -->
-    <div class="sf-status" id="sfStatus">
-      <div class="sf-status-dot"></div>
-      <span id="sfStatusText">S/Fライン未設定 — S/F LINEタブで設定してください</span>
+    <div class="sf-status-grid">
+      <div class="sf-status" id="sfStatusS">
+        <div class="sf-status-dot"></div>
+        <span>START LINE</span>
+        <span class="sf-status-badge" id="sfBadgeS">未設定</span>
+      </div>
+      <div class="sf-status" id="sfStatusF">
+        <div class="sf-status-dot"></div>
+        <span>FINISH LINE</span>
+        <span class="sf-status-badge" id="sfBadgeF">未設定</span>
+      </div>
     </div>
   </div>
 
@@ -475,12 +513,21 @@ canvas.chart { width: 100%; height: 120px; display: block; }
   <div id="page-map" class="page">
     <div id="map"></div>
     <div class="map-instructions" id="mapInstr">
-      地図を<b>タップ</b>してポイント<b id="mapPoint">A</b>を設定してください
+      設定するラインを選択してください
+    </div>
+    <!-- ライン選択タブ -->
+    <div class="line-tabs">
+      <button class="line-tab active" id="lineTabS" onclick="selectLineMode('S')">
+        <span class="line-tab-dot s"></span>START LINE
+      </button>
+      <button class="line-tab" id="lineTabF" onclick="selectLineMode('F')">
+        <span class="line-tab-dot f"></span>FINISH LINE
+      </button>
     </div>
     <div class="map-panel">
-      <button class="map-btn danger" onclick="resetLine()">RESET</button>
-      <button class="map-btn" id="loadLineBtn" onclick="loadExistingLine()" style="display:none">LOAD</button>
-      <button class="map-btn primary" id="saveLineBtn" onclick="saveLine()" style="display:none">SAVE LINE</button>
+      <button class="map-btn danger" onclick="resetCurrentLine()">RESET</button>
+      <button class="map-btn" id="undoPointBtn" onclick="undoPoint()" style="display:none">UNDO</button>
+      <button class="map-btn primary" id="saveLineBtn" onclick="saveLine()" style="display:none">SAVE</button>
     </div>
   </div>
 
@@ -522,13 +569,15 @@ const state = {
   lapTimer: null,
   prevCoord: null,
   sessions: [],
-  finishLine: null,       // {a:{lat,lng}, b:{lat,lng}}
+  startLine: null,        // {a:{lat,lng}, b:{lat,lng}}  スタートライン
+  finishLine: null,       // {a:{lat,lng}, b:{lat,lng}}  フィニッシュライン
+  lapStarted: false,      // スタートライン通過済みフラグ
   currentLap: null,       // {n, start, gps:[], g:[]}
   bestLapTime: null,
   lastLapTime: null,
 
   // sensors
-  gx: 0, gy: 0,          // 生値 (G)
+  gx: 0, gy: 0,
   gBuf: [],
   speed: 0,
   gpsOk: false,
@@ -646,7 +695,17 @@ function startRecording() {
   state.bestLapTime = null;
   state.lastLapTime = null;
   state.prevCoord = null;
-  newLap();
+  state.lapStarted = false;
+
+  // スタートラインが設定されていればライン待ち、なければ即タイマー開始
+  if (state.startLine) {
+    state.currentLap = { n: 0, start: null, gps: [], g: [] };
+    if (!state.sessions_temp_laps) state.sessions_temp_laps = [];
+    document.getElementById('lapNumLabel').textContent = 'S/F WAIT';
+    document.getElementById('lapCurrent').textContent = '—:——.———';
+  } else {
+    newLap();
+  }
 
   const btn = document.getElementById('recBtn');
   btn.classList.add('recording');
@@ -670,6 +729,7 @@ function stopRecording() {
     id: Date.now(),
     date: new Date().toISOString(),
     laps: state.sessions_temp_laps ?? [],
+    startLine: state.startLine,
     finishLine: state.finishLine
   };
   if (session.laps.length > 0) {
@@ -724,23 +784,56 @@ function updateLapDisplay() {
 //  LAP CROSSING DETECTION
 // ═══════════════════════════════════════════
 function checkLineCrossing(coord) {
-  if (!state.finishLine || !state.prevCoord) return;
-  const elapsed = (Date.now() - state.lapStart) / 1000;
-  if (elapsed < 5) return; // 誤検知防止
+  if (!state.prevCoord) return;
 
-  const { a, b } = state.finishLine;
-  if (segmentsIntersect(state.prevCoord, coord, a, b)) {
+  // ── スタートラインとフィニッシュラインが別々に設定されている場合 ──
+  if (state.startLine && state.finishLine) {
+    if (!state.lapStarted) {
+      // スタートライン待ち
+      if (segmentsIntersect(state.prevCoord, coord, state.startLine.a, state.startLine.b)) {
+        state.lapStarted = true;
+        newLap();
+        toast('スタートライン通過！', 'ok');
+      }
+    } else {
+      // フィニッシュライン待ち
+      const elapsed = (Date.now() - state.lapStart) / 1000;
+      if (elapsed < 5) return;
+      if (segmentsIntersect(state.prevCoord, coord, state.finishLine.a, state.finishLine.b)) {
+        finalizeLap();
+        state.lapStarted = false;
+        // 次のスタートライン待ちへ
+        state.currentLap = { n: 0, start: null, gps: [], g: [] };
+        document.getElementById('lapNumLabel').textContent = 'S/F WAIT';
+        document.getElementById('lapCurrent').textContent = '—:——.———';
+        clearInterval(state.lapTimer);
+        // フラッシュ・振動
+        triggerLapFlash();
+        toast(`LAP ${state.lapCount} 完了`, 'ok');
+      }
+    }
+    return;
+  }
+
+  // ── S/Fライン共通（従来モード：finishLineのみ設定時）──
+  const line = state.finishLine ?? state.startLine;
+  if (!line) return;
+  const elapsed = (Date.now() - state.lapStart) / 1000;
+  if (elapsed < 5) return;
+  if (segmentsIntersect(state.prevCoord, coord, line.a, line.b)) {
     finalizeLap();
     newLap();
-    // フラッシュ
-    const flash = document.getElementById('lapFlash');
-    flash.classList.remove('flash');
-    void flash.offsetWidth;
-    flash.classList.add('flash');
-    // 振動
-    if (navigator.vibrate) navigator.vibrate([80, 30, 80]);
+    triggerLapFlash();
     toast(`LAP ${state.lapCount - 1} 完了`, 'ok');
   }
+}
+
+function triggerLapFlash() {
+  const flash = document.getElementById('lapFlash');
+  flash.classList.remove('flash');
+  void flash.offsetWidth;
+  flash.classList.add('flash');
+  if (navigator.vibrate) navigator.vibrate([80, 30, 80]);
 }
 
 function segmentsIntersect(p1, p2, p3, p4) {
@@ -838,24 +931,25 @@ function drawGCircle(gx, gy) {
 //  MAP (Leaflet)
 // ═══════════════════════════════════════════
 let leafletMap = null;
-let markerA = null, markerB = null, lineLayer = null;
+let markerSA = null, markerSB = null, lineSLayer = null;  // Start
+let markerFA = null, markerFB = null, lineFLayer = null;  // Finish
 let traceLayer = null, traceCoords = [];
 let tempA = null, tempB = null;
+let lineMode = 'S'; // 'S' or 'F'
+
+const iconSA = L.divIcon({ className:'', html:`<div style="width:28px;height:28px;background:#00c8e0;border-radius:50%;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:11px;color:#000;font-family:monospace">S1</div>`, iconAnchor:[14,14] });
+const iconSB = L.divIcon({ className:'', html:`<div style="width:28px;height:28px;background:#00c8e0;border-radius:50%;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:11px;color:#000;font-family:monospace">S2</div>`, iconAnchor:[14,14] });
+const iconFA = L.divIcon({ className:'', html:`<div style="width:28px;height:28px;background:#00e87a;border-radius:50%;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:11px;color:#000;font-family:monospace">F1</div>`, iconAnchor:[14,14] });
+const iconFB = L.divIcon({ className:'', html:`<div style="width:28px;height:28px;background:#00e87a;border-radius:50%;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:11px;color:#000;font-family:monospace">F2</div>`, iconAnchor:[14,14] });
 
 function initMap() {
   mapInitialized = true;
-
   leafletMap = L.map('map', {
     center: [35.68, 139.69], zoom: 16,
     attributionControl: false, zoomControl: false
   });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 20 }).addTo(leafletMap);
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 20,
-    className: 'map-tiles'
-  }).addTo(leafletMap);
-
-  // 現在地取得してセンタリング
   if (state.prevCoord) {
     leafletMap.setView([state.prevCoord.lat, state.prevCoord.lng], 17);
   } else {
@@ -867,84 +961,147 @@ function initMap() {
   leafletMap.on('click', onMapClick);
 
   // 既存ライン描画
+  if (state.startLine)  drawStartLine();
   if (state.finishLine) drawFinishLine();
-  updateMapLoadBtn();
+  selectLineMode('S');
 }
 
-const iconA = L.divIcon({ className:'', html:`<div style="width:28px;height:28px;background:#2288ff;border-radius:50%;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:12px;color:#fff;font-family:monospace">A</div>`, iconAnchor:[14,14] });
-const iconB = L.divIcon({ className:'', html:`<div style="width:28px;height:28px;background:#ff2d55;border-radius:50%;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:12px;color:#fff;font-family:monospace">B</div>`, iconAnchor:[14,14] });
+function selectLineMode(mode) {
+  lineMode = mode;
+  tempA = null; tempB = null;
+
+  document.getElementById('lineTabS').className = 'line-tab' + (mode === 'S' ? ' active s-mode' : '');
+  document.getElementById('lineTabF').className = 'line-tab' + (mode === 'F' ? ' active f-mode' : '');
+  document.getElementById('saveLineBtn').style.display = 'none';
+  document.getElementById('undoPointBtn').style.display = 'none';
+
+  const color = mode === 'S' ? 'var(--cyan)' : 'var(--green)';
+  const label = mode === 'S' ? 'スタートライン' : 'フィニッシュライン';
+  document.getElementById('mapInstr').innerHTML =
+    `地図をタップして<b style="color:${color}">${label}</b>の点1を置いてください`;
+}
 
 function onMapClick(e) {
   const coord = { lat: e.latlng.lat, lng: e.latlng.lng };
+  const color = lineMode === 'S' ? 'var(--cyan)' : 'var(--green)';
+  const label = lineMode === 'S' ? 'スタートライン' : 'フィニッシュライン';
+
   if (!tempA) {
     tempA = coord;
-    if (markerA) markerA.remove();
-    markerA = L.marker([coord.lat, coord.lng], { icon: iconA }).addTo(leafletMap);
-    document.getElementById('mapPoint').textContent = 'B';
-    document.getElementById('mapInstr').innerHTML = '地図を<b>タップ</b>してポイント<b id="mapPoint">B</b>を設定してください';
+    // 一時マーカー配置
+    placeTempMarker('A', coord);
+    document.getElementById('undoPointBtn').style.display = '';
+    document.getElementById('mapInstr').innerHTML =
+      `次に<b style="color:${color}">${label}</b>の点2を置いてください`;
   } else if (!tempB) {
     tempB = coord;
-    if (markerB) markerB.remove();
-    markerB = L.marker([coord.lat, coord.lng], { icon: iconB }).addTo(leafletMap);
+    placeTempMarker('B', coord);
     drawTempLine();
-    document.getElementById('mapInstr').innerHTML = '<b style="color:var(--green)">S/Fライン設定完了</b> — SAVEで保存してください';
     document.getElementById('saveLineBtn').style.display = '';
+    document.getElementById('mapInstr').innerHTML =
+      `<b style="color:${color}">${label}設定完了</b> — SAVEで保存`;
+  }
+}
+
+function placeTempMarker(pt, coord) {
+  if (lineMode === 'S') {
+    if (pt === 'A') { if (markerSA) markerSA.remove(); markerSA = L.marker([coord.lat, coord.lng], { icon: iconSA }).addTo(leafletMap); }
+    else            { if (markerSB) markerSB.remove(); markerSB = L.marker([coord.lat, coord.lng], { icon: iconSB }).addTo(leafletMap); }
+  } else {
+    if (pt === 'A') { if (markerFA) markerFA.remove(); markerFA = L.marker([coord.lat, coord.lng], { icon: iconFA }).addTo(leafletMap); }
+    else            { if (markerFB) markerFB.remove(); markerFB = L.marker([coord.lat, coord.lng], { icon: iconFB }).addTo(leafletMap); }
   }
 }
 
 function drawTempLine() {
-  if (lineLayer) lineLayer.remove();
   if (!tempA || !tempB) return;
-  lineLayer = L.polyline([[tempA.lat, tempA.lng], [tempB.lat, tempB.lng]], {
-    color: '#f05a00', weight: 3, dashArray: '8 4'
-  }).addTo(leafletMap);
+  if (lineMode === 'S') {
+    if (lineSLayer) lineSLayer.remove();
+    lineSLayer = L.polyline([[tempA.lat, tempA.lng], [tempB.lat, tempB.lng]], { color: '#00c8e0', weight: 3, dashArray: '8 4' }).addTo(leafletMap);
+  } else {
+    if (lineFLayer) lineFLayer.remove();
+    lineFLayer = L.polyline([[tempA.lat, tempA.lng], [tempB.lat, tempB.lng]], { color: '#00e87a', weight: 3, dashArray: '8 4' }).addTo(leafletMap);
+  }
+}
+
+function drawStartLine() {
+  if (!state.startLine) return;
+  const { a, b } = state.startLine;
+  if (markerSA) markerSA.remove();
+  if (markerSB) markerSB.remove();
+  if (lineSLayer) lineSLayer.remove();
+  markerSA = L.marker([a.lat, a.lng], { icon: iconSA }).addTo(leafletMap);
+  markerSB = L.marker([b.lat, b.lng], { icon: iconSB }).addTo(leafletMap);
+  lineSLayer = L.polyline([[a.lat, a.lng], [b.lat, b.lng]], { color: '#00c8e0', weight: 3 }).addTo(leafletMap);
 }
 
 function drawFinishLine() {
   if (!state.finishLine) return;
   const { a, b } = state.finishLine;
-  if (markerA) markerA.remove();
-  if (markerB) markerB.remove();
-  if (lineLayer) lineLayer.remove();
-  markerA = L.marker([a.lat, a.lng], { icon: iconA }).addTo(leafletMap);
-  markerB = L.marker([b.lat, b.lng], { icon: iconB }).addTo(leafletMap);
-  lineLayer = L.polyline([[a.lat, a.lng], [b.lat, b.lng]], {
-    color: '#f05a00', weight: 3
-  }).addTo(leafletMap);
+  if (markerFA) markerFA.remove();
+  if (markerFB) markerFB.remove();
+  if (lineFLayer) lineFLayer.remove();
+  markerFA = L.marker([a.lat, a.lng], { icon: iconFA }).addTo(leafletMap);
+  markerFB = L.marker([b.lat, b.lng], { icon: iconFB }).addTo(leafletMap);
+  lineFLayer = L.polyline([[a.lat, a.lng], [b.lat, b.lng]], { color: '#00e87a', weight: 3 }).addTo(leafletMap);
 }
 
 function saveLine() {
   if (!tempA || !tempB) return;
-  state.finishLine = { a: tempA, b: tempB };
-  saveFinishLine();
+  const line = { a: tempA, b: tempB };
+  if (lineMode === 'S') {
+    state.startLine = line;
+    saveStartLine();
+    drawStartLine();
+    toast('スタートラインを保存しました', 'ok');
+  } else {
+    state.finishLine = line;
+    saveFinishLine();
+    drawFinishLine();
+    toast('フィニッシュラインを保存しました', 'ok');
+  }
+  tempA = null; tempB = null;
   updateSFStatus();
-  toast('S/Fラインを保存しました', 'ok');
-  tempA = null; tempB = null;
   document.getElementById('saveLineBtn').style.display = 'none';
+  document.getElementById('undoPointBtn').style.display = 'none';
+  selectLineMode(lineMode);
 }
 
-function resetLine() {
+function resetCurrentLine() {
   tempA = null; tempB = null;
-  if (markerA) { markerA.remove(); markerA = null; }
-  if (markerB) { markerB.remove(); markerB = null; }
-  if (lineLayer) { lineLayer.remove(); lineLayer = null; }
-  document.getElementById('mapPoint').textContent = 'A';
-  document.getElementById('mapInstr').innerHTML = '地図を<b>タップ</b>してポイント<b id="mapPoint">A</b>を設定してください';
-  document.getElementById('saveLineBtn').style.display = 'none';
+  if (lineMode === 'S') {
+    state.startLine = null;
+    saveStartLine();
+    if (markerSA) { markerSA.remove(); markerSA = null; }
+    if (markerSB) { markerSB.remove(); markerSB = null; }
+    if (lineSLayer) { lineSLayer.remove(); lineSLayer = null; }
+  } else {
+    state.finishLine = null;
+    saveFinishLine();
+    if (markerFA) { markerFA.remove(); markerFA = null; }
+    if (markerFB) { markerFB.remove(); markerFB = null; }
+    if (lineFLayer) { lineFLayer.remove(); lineFLayer = null; }
+  }
+  updateSFStatus();
+  selectLineMode(lineMode);
 }
 
-function loadExistingLine() {
-  if (!state.finishLine) return;
-  const { a, b } = state.finishLine;
-  tempA = a; tempB = b;
-  drawFinishLine();
-  document.getElementById('saveLineBtn').style.display = '';
-  document.getElementById('mapInstr').innerHTML = '<b style="color:var(--green)">既存ライン読込済み</b> — 変更する場合はRESETしてください';
-  leafletMap.fitBounds([[a.lat, a.lng], [b.lat, b.lng]], { padding: [40, 40] });
-}
-
-function updateMapLoadBtn() {
-  document.getElementById('loadLineBtn').style.display = state.finishLine ? '' : 'none';
+function undoPoint() {
+  if (tempB) {
+    tempB = null;
+    if (lineMode === 'S') { if (markerSB) { markerSB.remove(); markerSB = null; } if (lineSLayer) { lineSLayer.remove(); lineSLayer = null; } }
+    else                  { if (markerFB) { markerFB.remove(); markerFB = null; } if (lineFLayer) { lineFLayer.remove(); lineFLayer = null; } }
+    document.getElementById('saveLineBtn').style.display = 'none';
+    const color = lineMode === 'S' ? 'var(--cyan)' : 'var(--green)';
+    const label = lineMode === 'S' ? 'スタートライン' : 'フィニッシュライン';
+    document.getElementById('mapInstr').innerHTML = `次に<b style="color:${color}">${label}</b>の点2を置いてください`;
+  } else if (tempA) {
+    tempA = null;
+    if (lineMode === 'S') { if (markerSA) { markerSA.remove(); markerSA = null; } }
+    else                  { if (markerFA) { markerFA.remove(); markerFA = null; } }
+    document.getElementById('undoPointBtn').style.display = 'none';
+    selectLineMode(lineMode);
+  }
 }
 
 // Map trace
@@ -953,9 +1110,7 @@ function updateTraceOnMap(coord) {
   traceCoords.push([coord.lat, coord.lng]);
   if (traceLayer) traceLayer.remove();
   if (traceCoords.length > 1) {
-    traceLayer = L.polyline(traceCoords, {
-      color: '#00c8e0', weight: 2, opacity: .7
-    }).addTo(leafletMap);
+    traceLayer = L.polyline(traceCoords, { color: '#00c8e0', weight: 2, opacity: .7 }).addTo(leafletMap);
   }
 }
 
@@ -1152,8 +1307,25 @@ function loadSessions() {
   } catch {}
 }
 
+function saveStartLine() {
+  try {
+    if (state.startLine) localStorage.setItem('circuit_startline', JSON.stringify(state.startLine));
+    else localStorage.removeItem('circuit_startline');
+  } catch {}
+}
+
 function saveFinishLine() {
-  try { localStorage.setItem('circuit_finishline', JSON.stringify(state.finishLine)); } catch {}
+  try {
+    if (state.finishLine) localStorage.setItem('circuit_finishline', JSON.stringify(state.finishLine));
+    else localStorage.removeItem('circuit_finishline');
+  } catch {}
+}
+
+function loadStartLine() {
+  try {
+    const d = localStorage.getItem('circuit_startline');
+    if (d) state.startLine = JSON.parse(d);
+  } catch {}
 }
 
 function loadFinishLine() {
@@ -1164,16 +1336,21 @@ function loadFinishLine() {
 }
 
 function updateSFStatus() {
-  const el = document.getElementById('sfStatus');
-  const txt = document.getElementById('sfStatusText');
-  if (state.finishLine) {
-    el.classList.add('set');
-    txt.textContent = 'S/Fライン設定済み';
+  const sEl = document.getElementById('sfStatusS');
+  const fEl = document.getElementById('sfStatusF');
+  const sBadge = document.getElementById('sfBadgeS');
+  const fBadge = document.getElementById('sfBadgeF');
+
+  if (state.startLine) {
+    sEl.classList.add('set-s'); sBadge.textContent = '設定済み';
   } else {
-    el.classList.remove('set');
-    txt.textContent = 'S/Fライン未設定 — S/F LINEタブで設定してください';
+    sEl.classList.remove('set-s'); sBadge.textContent = '未設定';
   }
-  updateMapLoadBtn();
+  if (state.finishLine) {
+    fEl.classList.add('set-f'); fBadge.textContent = '設定済み';
+  } else {
+    fEl.classList.remove('set-f'); fBadge.textContent = '未設定';
+  }
 }
 
 // ═══════════════════════════════════════════
@@ -1204,6 +1381,7 @@ function toast(msg, type = '') {
 //  INIT
 // ═══════════════════════════════════════════
 loadSessions();
+loadStartLine();
 loadFinishLine();
 updateSFStatus();
 startGPS();
