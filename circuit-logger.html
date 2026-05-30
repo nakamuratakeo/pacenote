@@ -997,9 +997,8 @@ function onMapClick(e) {
     tempB = coord;
     placeTempMarker('B', coord);
     drawTempLine();
-    document.getElementById('saveLineBtn').style.display = '';
-    document.getElementById('mapInstr').innerHTML =
-      `<b style="color:${color}">${label}設定完了</b> — SAVEで保存`;
+    // 2点揃ったら即自動保存
+    saveLine();
   }
 }
 
@@ -1049,22 +1048,28 @@ function drawFinishLine() {
 function saveLine() {
   if (!tempA || !tempB) return;
   const line = { a: tempA, b: tempB };
+  const color = lineMode === 'S' ? 'var(--cyan)' : 'var(--green)';
+  const label = lineMode === 'S' ? 'スタートライン' : 'フィニッシュライン';
+
   if (lineMode === 'S') {
     state.startLine = line;
     saveStartLine();
     drawStartLine();
-    toast('スタートラインを保存しました', 'ok');
+    toast('スタートライン保存済み ✓', 'ok');
+    // フィニッシュラインへ自動遷移
+    selectLineMode('F');
   } else {
     state.finishLine = line;
     saveFinishLine();
     drawFinishLine();
-    toast('フィニッシュラインを保存しました', 'ok');
+    toast('フィニッシュライン保存済み ✓', 'ok');
+    const instr = document.getElementById('mapInstr');
+    instr.innerHTML = `<b style="color:var(--green)">S/Fライン設定完了！</b> DASHBOARDで録画開始できます`;
   }
   tempA = null; tempB = null;
   updateSFStatus();
   document.getElementById('saveLineBtn').style.display = 'none';
   document.getElementById('undoPointBtn').style.display = 'none';
-  selectLineMode(lineMode);
 }
 
 function resetCurrentLine() {
