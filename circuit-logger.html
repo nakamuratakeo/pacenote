@@ -1,0 +1,1219 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0a0a">
+<title>CIRCUIT LOGGER</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #080c10;
+  --panel: #0e1318;
+  --border: #1e2830;
+  --dim: #2a3540;
+  --text: #c8d8e8;
+  --muted: #4a6070;
+  --orange: #f05a00;
+  --orange-glow: rgba(240,90,0,0.3);
+  --cyan: #00c8e0;
+  --cyan-glow: rgba(0,200,224,0.25);
+  --green: #00e87a;
+  --red: #ff2d55;
+  --yellow: #ffd000;
+  --mono: 'Share Tech Mono', monospace;
+  --cond: 'Barlow Condensed', sans-serif;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bot: env(safe-area-inset-bottom, 0px);
+}
+
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ── SCANLINE OVERLAY ── */
+body::before {
+  content:'';
+  position:fixed; inset:0; pointer-events:none; z-index:999;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px);
+}
+
+/* ══════════════════════════════════
+   LAYOUT
+══════════════════════════════════ */
+#app {
+  display: flex; flex-direction: column;
+  height: 100dvh;
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bot);
+}
+
+/* ── HEADER ── */
+#header {
+  display: flex; align-items: center;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  flex-shrink: 0;
+}
+#header .logo {
+  font-family: var(--cond); font-weight: 900; font-size: 18px;
+  letter-spacing: 3px; color: var(--orange);
+  text-shadow: 0 0 20px var(--orange-glow);
+}
+#header .spacer { flex: 1; }
+.gps-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--muted); transition: background .3s;
+}
+.gps-dot.ok { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse-dot 2s infinite; }
+.gps-dot.warn { background: var(--yellow); }
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+.hdr-btn {
+  background: none; border: 1px solid var(--border);
+  color: var(--text); padding: 6px 12px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 1px;
+  cursor: pointer; border-radius: 4px; transition: all .2s;
+}
+.hdr-btn:hover, .hdr-btn.active {
+  border-color: var(--orange); color: var(--orange); background: var(--orange-glow);
+}
+
+/* ── TABS ── */
+#tabs {
+  display: flex; background: var(--panel);
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.tab {
+  flex: 1; padding: 9px 4px;
+  font-family: var(--cond); font-size: 12px; font-weight: 600; letter-spacing: 2px;
+  text-align: center; cursor: pointer;
+  color: var(--muted); border-bottom: 2px solid transparent;
+  transition: all .2s;
+}
+.tab.active { color: var(--orange); border-bottom-color: var(--orange); }
+
+/* ── PAGES ── */
+.page { display: none; flex:1; overflow-y: auto; overflow-x: hidden; }
+.page.active { display: flex; flex-direction: column; }
+
+/* ══════════════════════════════════
+   DASHBOARD
+══════════════════════════════════ */
+#page-dash {
+  padding: 12px;
+  gap: 10px;
+}
+
+/* Speed */
+.speed-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px;
+  display: flex; align-items: center; gap: 0;
+}
+.speed-main {
+  flex:1; text-align:center;
+}
+.speed-val {
+  font-family: var(--cond); font-weight: 900; font-size: 80px;
+  line-height: 1; color: #fff;
+  text-shadow: 0 0 40px rgba(255,255,255,0.15);
+  letter-spacing: -2px;
+}
+.speed-unit {
+  font-size: 13px; color: var(--muted); letter-spacing: 3px; margin-top: 2px;
+}
+.speed-bar-wrap {
+  width: 8px; height: 100px;
+  background: var(--bg); border-radius: 4px; overflow: hidden;
+  display: flex; flex-direction: column-reverse;
+}
+.speed-bar-fill {
+  background: linear-gradient(to top, var(--orange), var(--yellow));
+  border-radius: 4px; transition: height .2s ease;
+  width: 100%;
+}
+
+/* G Meter */
+.g-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px;
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 12px; align-items: center;
+}
+.g-circle-wrap { display: flex; justify-content: center; }
+canvas#gCanvas {
+  border-radius: 50%;
+  display: block;
+}
+.g-values { display: flex; flex-direction: column; gap: 10px; }
+.g-row { display: flex; flex-direction: column; gap: 2px; }
+.g-label { font-size: 10px; color: var(--muted); letter-spacing: 2px; }
+.g-num {
+  font-family: var(--cond); font-weight: 700; font-size: 28px; line-height:1;
+  color: #fff;
+}
+.g-num span { font-size: 11px; color: var(--muted); margin-left: 2px; }
+
+/* Lap Times */
+.lap-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px;
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+}
+.lap-cell {
+  padding: 12px 8px; text-align: center;
+  border-right: 1px solid var(--border);
+}
+.lap-cell:last-child { border-right: none; }
+.lap-cell-label { font-size: 9px; color: var(--muted); letter-spacing: 2px; margin-bottom: 4px; }
+.lap-cell-val {
+  font-family: var(--cond); font-weight: 700; font-size: 18px;
+  letter-spacing: 1px; color: #fff;
+}
+.lap-cell-val.best { color: var(--yellow); text-shadow: 0 0 12px rgba(255,208,0,0.5); }
+.lap-cell-val.current { color: var(--cyan); }
+.lap-sub { font-size: 9px; color: var(--muted); margin-top: 2px; }
+
+/* REC Button */
+.rec-btn {
+  background: none;
+  border: 2px solid var(--orange);
+  color: var(--orange);
+  font-family: var(--cond); font-weight: 900; font-size: 18px; letter-spacing: 4px;
+  padding: 16px; border-radius: 10px; width: 100%; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  transition: all .2s;
+  text-shadow: 0 0 15px var(--orange-glow);
+  box-shadow: 0 0 20px var(--orange-glow), inset 0 0 20px rgba(240,90,0,0.05);
+}
+.rec-btn:hover { background: var(--orange-glow); }
+.rec-btn.recording {
+  border-color: var(--red); color: var(--red);
+  text-shadow: 0 0 15px rgba(255,45,85,0.5);
+  box-shadow: 0 0 20px rgba(255,45,85,0.3), inset 0 0 20px rgba(255,45,85,0.05);
+  animation: rec-pulse 1.5s ease-in-out infinite;
+}
+@keyframes rec-pulse {
+  0%,100% { box-shadow: 0 0 20px rgba(255,45,85,0.3), inset 0 0 20px rgba(255,45,85,0.05); }
+  50% { box-shadow: 0 0 40px rgba(255,45,85,0.6), inset 0 0 20px rgba(255,45,85,0.1); }
+}
+.rec-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: currentColor;
+}
+.rec-btn.recording .rec-dot { animation: blink .8s step-start infinite; }
+@keyframes blink { 50% { opacity:0; } }
+
+/* SF Line status */
+.sf-status {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-radius: 8px;
+  background: var(--panel); border: 1px solid var(--border);
+  font-size: 11px; color: var(--muted);
+}
+.sf-status.set { border-color: rgba(0,232,122,0.3); color: var(--green); }
+.sf-status-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--muted); flex-shrink: 0;
+}
+.sf-status.set .sf-status-dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+/* ══════════════════════════════════
+   MAP PAGE
+══════════════════════════════════ */
+#page-map {
+  position: relative;
+  height: 100%;
+}
+#map {
+  width: 100%; height: 100%;
+  background: #0a1420;
+}
+.map-instructions {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  background: rgba(10,12,16,0.92); border: 1px solid var(--border);
+  padding: 10px 16px; border-radius: 8px;
+  font-size: 12px; color: var(--text); text-align: center;
+  backdrop-filter: blur(10px); white-space: nowrap;
+  max-width: calc(100vw - 24px);
+  white-space: normal;
+}
+.map-instructions b { color: var(--orange); }
+.map-panel {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  background: rgba(8,12,16,0.95); border-top: 1px solid var(--border);
+  padding: 12px 16px; display: flex; gap: 10px; align-items: center;
+  backdrop-filter: blur(10px);
+  padding-bottom: calc(12px + var(--safe-bot));
+}
+.map-btn {
+  flex:1; padding: 11px 8px;
+  border-radius: 8px; border: 1px solid var(--border);
+  background: var(--panel); color: var(--text);
+  font-family: var(--mono); font-size: 11px; letter-spacing: 1px;
+  cursor: pointer; transition: all .2s; text-align: center;
+}
+.map-btn.primary {
+  border-color: var(--orange); color: var(--orange); background: var(--orange-glow);
+}
+.map-btn.danger {
+  border-color: rgba(255,45,85,0.5); color: var(--red);
+}
+
+/* ══════════════════════════════════
+   SESSIONS PAGE
+══════════════════════════════════ */
+#page-sessions { padding: 12px; gap: 8px; }
+.session-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px; cursor: pointer;
+  transition: border-color .2s;
+}
+.session-card:hover { border-color: var(--dim); }
+.session-date {
+  font-size: 11px; color: var(--muted); margin-bottom: 8px; letter-spacing: 1px;
+}
+.session-stats { display: flex; gap: 20px; }
+.stat-item { display: flex; flex-direction: column; gap: 2px; }
+.stat-label { font-size: 9px; color: var(--muted); letter-spacing: 2px; }
+.stat-val {
+  font-family: var(--cond); font-weight: 700; font-size: 18px; color: #fff;
+}
+.stat-val.gold { color: var(--yellow); }
+.empty-state {
+  flex:1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px;
+  color: var(--muted);
+}
+.empty-icon { font-size: 48px; opacity: .3; }
+.empty-text { font-size: 12px; letter-spacing: 2px; }
+
+/* ══════════════════════════════════
+   DETAIL MODAL
+══════════════════════════════════ */
+#modal {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
+  display: none; flex-direction: column;
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bot);
+}
+#modal.open { display: flex; }
+.modal-header {
+  display: flex; align-items: center;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.modal-title { font-family: var(--cond); font-weight: 700; font-size: 16px; letter-spacing: 2px; flex:1; }
+.modal-close {
+  background: none; border: 1px solid var(--border);
+  color: var(--text); padding: 6px 12px; border-radius: 4px;
+  font-family: var(--mono); font-size: 11px; cursor: pointer;
+}
+.modal-body { flex:1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+
+/* Lap list in modal */
+.lap-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border-radius: 8px;
+  background: var(--panel); border: 1px solid var(--border);
+  cursor: pointer; transition: border-color .2s;
+}
+.lap-row:hover, .lap-row.sel { border-color: var(--orange); }
+.lap-num { font-size: 11px; color: var(--muted); width: 50px; }
+.lap-time {
+  font-family: var(--cond); font-weight: 700; font-size: 20px; color: #fff; flex:1;
+}
+.lap-time.best { color: var(--yellow); }
+.lap-badge {
+  font-size: 9px; padding: 2px 6px; border-radius: 3px; letter-spacing: 1px;
+  background: rgba(255,208,0,0.15); color: var(--yellow); border: 1px solid rgba(255,208,0,0.3);
+}
+.lap-meta { font-size: 10px; color: var(--muted); text-align: right; line-height: 1.5; }
+
+/* Chart container */
+.chart-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px;
+}
+.chart-title { font-size: 10px; color: var(--muted); letter-spacing: 2px; margin-bottom: 10px; }
+canvas.chart { width: 100%; height: 120px; display: block; }
+
+/* ══════════════════════════════════
+   LEAFLET MAP (no external tiles needed, OSM)
+══════════════════════════════════ */
+.leaflet-container { background: #0a1420 !important; }
+
+/* ── Toast ── */
+.toast {
+  position: fixed; bottom: calc(80px + var(--safe-bot));
+  left: 50%; transform: translateX(-50%);
+  background: rgba(14,19,24,0.97); border: 1px solid var(--border);
+  padding: 10px 20px; border-radius: 8px;
+  font-size: 12px; color: var(--text); letter-spacing: 1px;
+  pointer-events: none; opacity: 0; transition: opacity .3s;
+  z-index: 200; white-space: nowrap;
+}
+.toast.show { opacity: 1; }
+.toast.ok { border-color: var(--green); color: var(--green); }
+.toast.warn { border-color: var(--orange); color: var(--orange); }
+
+/* ── Lap Flash ── */
+#lapFlash {
+  position: fixed; inset: 0; z-index: 300; pointer-events: none;
+  background: rgba(240,90,0,0.15);
+  opacity: 0; transition: opacity .1s;
+}
+#lapFlash.flash { animation: lap-flash .6s ease-out; }
+@keyframes lap-flash {
+  0% { opacity:1; }
+  100% { opacity:0; }
+}
+</style>
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+</head>
+<body>
+
+<div id="lapFlash"></div>
+
+<div id="app">
+  <!-- HEADER -->
+  <div id="header">
+    <div class="logo">CIRCUIT LOGGER</div>
+    <div class="spacer"></div>
+    <div class="gps-dot" id="gpsDot" title="GPS状態"></div>
+    <button class="hdr-btn" id="btnSessions" onclick="showTab('sessions')">SESSIONS</button>
+  </div>
+
+  <!-- TABS -->
+  <div id="tabs">
+    <div class="tab active" data-tab="dash" onclick="showTab('dash')">DASHBOARD</div>
+    <div class="tab" data-tab="map" onclick="showTab('map')">S/F LINE</div>
+    <div class="tab" data-tab="sessions" onclick="showTab('sessions')">SESSIONS</div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="page-dash" class="page active">
+    <!-- Speed -->
+    <div class="speed-card">
+      <div class="speed-main">
+        <div class="speed-val" id="speedVal">0</div>
+        <div class="speed-unit">km/h</div>
+      </div>
+      <div class="speed-bar-wrap">
+        <div class="speed-bar-fill" id="speedBar" style="height:0%"></div>
+      </div>
+    </div>
+
+    <!-- G Meter -->
+    <div class="g-card">
+      <div class="g-circle-wrap">
+        <canvas id="gCanvas" width="130" height="130"></canvas>
+      </div>
+      <div class="g-values">
+        <div class="g-row">
+          <div class="g-label">LATERAL</div>
+          <div class="g-num" id="gLat">0.00<span>G</span></div>
+        </div>
+        <div class="g-row">
+          <div class="g-label">LONGIT</div>
+          <div class="g-num" id="gLon">0.00<span>G</span></div>
+        </div>
+        <div class="g-row">
+          <div class="g-label">TOTAL</div>
+          <div class="g-num" id="gTotal">0.00<span>G</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lap Times -->
+    <div class="lap-card">
+      <div class="lap-cell">
+        <div class="lap-cell-label">CURRENT</div>
+        <div class="lap-cell-val current" id="lapCurrent">0:00.000</div>
+        <div class="lap-sub" id="lapNumLabel">—</div>
+      </div>
+      <div class="lap-cell">
+        <div class="lap-cell-label">LAST LAP</div>
+        <div class="lap-cell-val" id="lapLast">—:——.———</div>
+      </div>
+      <div class="lap-cell">
+        <div class="lap-cell-label">BEST</div>
+        <div class="lap-cell-val best" id="lapBest">—:——.———</div>
+      </div>
+    </div>
+
+    <!-- REC Button -->
+    <button class="rec-btn" id="recBtn" onclick="toggleRecording()">
+      <div class="rec-dot"></div>
+      <span id="recLabel">START REC</span>
+    </button>
+
+    <!-- SF Status -->
+    <div class="sf-status" id="sfStatus">
+      <div class="sf-status-dot"></div>
+      <span id="sfStatusText">S/Fライン未設定 — S/F LINEタブで設定してください</span>
+    </div>
+  </div>
+
+  <!-- MAP -->
+  <div id="page-map" class="page">
+    <div id="map"></div>
+    <div class="map-instructions" id="mapInstr">
+      地図を<b>タップ</b>してポイント<b id="mapPoint">A</b>を設定してください
+    </div>
+    <div class="map-panel">
+      <button class="map-btn danger" onclick="resetLine()">RESET</button>
+      <button class="map-btn" id="loadLineBtn" onclick="loadExistingLine()" style="display:none">LOAD</button>
+      <button class="map-btn primary" id="saveLineBtn" onclick="saveLine()" style="display:none">SAVE LINE</button>
+    </div>
+  </div>
+
+  <!-- SESSIONS -->
+  <div id="page-sessions" class="page">
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">🏁</div>
+      <div class="empty-text">NO SESSIONS YET</div>
+    </div>
+    <div id="sessionList"></div>
+  </div>
+</div>
+
+<!-- DETAIL MODAL -->
+<div id="modal">
+  <div class="modal-header">
+    <div class="modal-title" id="modalTitle">SESSION DETAIL</div>
+    <button class="modal-close" onclick="closeModal()">CLOSE</button>
+  </div>
+  <div class="modal-body" id="modalBody"></div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Leaflet JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════
+const state = {
+  recording: false,
+  lapCount: 0,
+  lapStart: null,
+  lapTimer: null,
+  prevCoord: null,
+  sessions: [],
+  finishLine: null,       // {a:{lat,lng}, b:{lat,lng}}
+  currentLap: null,       // {n, start, gps:[], g:[]}
+  bestLapTime: null,
+  lastLapTime: null,
+
+  // sensors
+  gx: 0, gy: 0,          // 生値 (G)
+  gBuf: [],
+  speed: 0,
+  gpsOk: false,
+};
+
+// G平滑化バッファ
+const G_BUF = 6;
+
+// ═══════════════════════════════════════════
+//  TABS
+// ═══════════════════════════════════════════
+let mapInitialized = false;
+
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + name));
+  if (name === 'map' && !mapInitialized) initMap();
+  if (name === 'sessions') renderSessions();
+}
+
+// ═══════════════════════════════════════════
+//  GPS
+// ═══════════════════════════════════════════
+let watchId = null;
+
+function startGPS() {
+  if (!navigator.geolocation) { toast('GPS非対応のブラウザです', 'warn'); return; }
+  watchId = navigator.geolocation.watchPosition(onGPS, onGPSError, {
+    enableHighAccuracy: true, maximumAge: 0, timeout: 10000
+  });
+}
+
+function stopGPS() {
+  if (watchId != null) navigator.geolocation.clearWatch(watchId);
+  watchId = null;
+}
+
+function onGPS(pos) {
+  state.gpsOk = true;
+  document.getElementById('gpsDot').className = 'gps-dot ok';
+  const coord = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+  const spd = Math.max(pos.coords.speed ?? 0, 0);
+  state.speed = spd * 3.6; // m/s → km/h
+
+  if (state.recording) {
+    state.currentLap?.gps.push({
+      t: Date.now(), lat: coord.lat, lng: coord.lng, spd
+    });
+    checkLineCrossing(coord);
+  }
+  state.prevCoord = coord;
+
+  // 走行トレースをマップに追加
+  updateTraceOnMap(coord);
+}
+
+function onGPSError(e) {
+  state.gpsOk = false;
+  document.getElementById('gpsDot').className = 'gps-dot warn';
+}
+
+// ═══════════════════════════════════════════
+//  ACCELEROMETER (G-sensor)
+// ═══════════════════════════════════════════
+function startMotion() {
+  // iOS 13+ requires permission
+  if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+    DeviceMotionEvent.requestPermission().then(r => {
+      if (r === 'granted') listenMotion();
+    }).catch(() => toast('加速度センサーの許可が必要です', 'warn'));
+  } else {
+    listenMotion();
+  }
+}
+
+function listenMotion() {
+  window.addEventListener('devicemotion', onMotion);
+}
+
+function onMotion(e) {
+  const acc = e.accelerationIncludingGravity ?? e.acceleration;
+  if (!acc) return;
+  // 重力加速度 ≈ 9.81 m/s² → G換算
+  const rawX = (acc.x ?? 0) / 9.81;
+  const rawY = (acc.y ?? 0) / 9.81;
+
+  state.gBuf.push({ x: rawX, y: rawY });
+  if (state.gBuf.length > G_BUF) state.gBuf.shift();
+  const avgX = state.gBuf.reduce((s, v) => s + v.x, 0) / state.gBuf.length;
+  const avgY = state.gBuf.reduce((s, v) => s + v.y, 0) / state.gBuf.length;
+
+  state.gx = avgX;
+  state.gy = avgY;
+
+  if (state.recording && state.currentLap) {
+    state.currentLap.g.push({ t: Date.now(), x: avgX, y: avgY });
+  }
+}
+
+// ═══════════════════════════════════════════
+//  RECORDING
+// ═══════════════════════════════════════════
+function toggleRecording() {
+  if (state.recording) stopRecording();
+  else startRecording();
+}
+
+function startRecording() {
+  if (!state.gpsOk && watchId === null) {
+    startGPS();
+    toast('GPS取得中… しばらくお待ちください', 'warn');
+  }
+  state.recording = true;
+  state.lapCount = 0;
+  state.bestLapTime = null;
+  state.lastLapTime = null;
+  state.prevCoord = null;
+  newLap();
+
+  const btn = document.getElementById('recBtn');
+  btn.classList.add('recording');
+  document.getElementById('recLabel').textContent = 'STOP REC';
+  toast('録画開始', 'ok');
+}
+
+function stopRecording() {
+  state.recording = false;
+  finalizeLap();
+
+  clearInterval(state.lapTimer);
+  state.lapTimer = null;
+
+  const btn = document.getElementById('recBtn');
+  btn.classList.remove('recording');
+  document.getElementById('recLabel').textContent = 'START REC';
+
+  // セッション保存
+  const session = {
+    id: Date.now(),
+    date: new Date().toISOString(),
+    laps: state.sessions_temp_laps ?? [],
+    finishLine: state.finishLine
+  };
+  if (session.laps.length > 0) {
+    state.sessions.unshift(session);
+    saveSessions();
+    toast(`セッション保存完了 ${session.laps.length}ラップ`, 'ok');
+  }
+  state.sessions_temp_laps = [];
+  state.currentLap = null;
+  clearTraceOnMap();
+
+  document.getElementById('lapCurrent').textContent = '0:00.000';
+  document.getElementById('lapNumLabel').textContent = '—';
+}
+
+function newLap() {
+  state.lapCount++;
+  state.lapStart = Date.now();
+  state.currentLap = { n: state.lapCount, start: state.lapStart, gps: [], g: [] };
+  if (!state.sessions_temp_laps) state.sessions_temp_laps = [];
+
+  document.getElementById('lapNumLabel').textContent = `LAP ${state.lapCount}`;
+
+  clearInterval(state.lapTimer);
+  state.lapTimer = setInterval(updateLapTimer, 50);
+}
+
+function finalizeLap() {
+  if (!state.currentLap) return;
+  const dur = (Date.now() - state.lapStart) / 1000;
+  const lap = { ...state.currentLap, duration: dur };
+  if (!state.sessions_temp_laps) state.sessions_temp_laps = [];
+  state.sessions_temp_laps.push(lap);
+  state.lastLapTime = dur;
+  if (!state.bestLapTime || dur < state.bestLapTime) state.bestLapTime = dur;
+  updateLapDisplay();
+  state.currentLap = null;
+}
+
+function updateLapTimer() {
+  if (!state.recording) return;
+  const elapsed = (Date.now() - state.lapStart) / 1000;
+  document.getElementById('lapCurrent').textContent = fmtTime(elapsed);
+}
+
+function updateLapDisplay() {
+  document.getElementById('lapLast').textContent = state.lastLapTime ? fmtTime(state.lastLapTime) : '—:——.———';
+  document.getElementById('lapBest').textContent = state.bestLapTime ? fmtTime(state.bestLapTime) : '—:——.———';
+}
+
+// ═══════════════════════════════════════════
+//  LAP CROSSING DETECTION
+// ═══════════════════════════════════════════
+function checkLineCrossing(coord) {
+  if (!state.finishLine || !state.prevCoord) return;
+  const elapsed = (Date.now() - state.lapStart) / 1000;
+  if (elapsed < 5) return; // 誤検知防止
+
+  const { a, b } = state.finishLine;
+  if (segmentsIntersect(state.prevCoord, coord, a, b)) {
+    finalizeLap();
+    newLap();
+    // フラッシュ
+    const flash = document.getElementById('lapFlash');
+    flash.classList.remove('flash');
+    void flash.offsetWidth;
+    flash.classList.add('flash');
+    // 振動
+    if (navigator.vibrate) navigator.vibrate([80, 30, 80]);
+    toast(`LAP ${state.lapCount - 1} 完了`, 'ok');
+  }
+}
+
+function segmentsIntersect(p1, p2, p3, p4) {
+  const d1 = dir(p3, p4, p1), d2 = dir(p3, p4, p2);
+  const d3 = dir(p1, p2, p3), d4 = dir(p1, p2, p4);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+         ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+function dir(a, b, c) {
+  return (c.lng - a.lng) * (b.lat - a.lat) - (b.lng - a.lng) * (c.lat - a.lat);
+}
+
+// ═══════════════════════════════════════════
+//  RENDER LOOP
+// ═══════════════════════════════════════════
+function renderLoop() {
+  // Speed
+  const spd = state.speed;
+  document.getElementById('speedVal').textContent = Math.round(spd);
+  const pct = Math.min(spd / 200, 1) * 100;
+  document.getElementById('speedBar').style.height = pct + '%';
+
+  // G
+  const gx = state.gx, gy = state.gy;
+  const gt = Math.sqrt(gx * gx + gy * gy);
+  document.getElementById('gLat').innerHTML = `${(gx >= 0 ? '+' : '') + gx.toFixed(2)}<span>G</span>`;
+  document.getElementById('gLon').innerHTML = `${(gy >= 0 ? '+' : '') + gy.toFixed(2)}<span>G</span>`;
+  document.getElementById('gTotal').innerHTML = `${gt.toFixed(2)}<span>G</span>`;
+  drawGCircle(gx, gy);
+
+  requestAnimationFrame(renderLoop);
+}
+
+// G Circle Canvas
+function drawGCircle(gx, gy) {
+  const cv = document.getElementById('gCanvas');
+  const ctx = cv.getContext('2d');
+  const w = cv.width, h = cv.height;
+  const cx = w / 2, cy = h / 2, r = w / 2 - 4;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Background
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#080c10';
+  ctx.fill();
+
+  // Grid rings
+  [1.0, 0.5].forEach(frac => {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * frac, 0, Math.PI * 2);
+    ctx.strokeStyle = frac === 1.0 ? '#1e2830' : '#141c22';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+
+  // Crosshair
+  ctx.strokeStyle = '#1a2530';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r);
+  ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy);
+  ctx.stroke();
+
+  // Dot trail (last few positions)
+  const MAX_G = 2.0;
+  const dx = (gx / MAX_G) * (r - 8);
+  const dy = -(gy / MAX_G) * (r - 8);
+  const dotX = cx + dx, dotY = cy + dy;
+  const total = Math.sqrt(gx * gx + gy * gy);
+
+  // Color based on G level
+  const hue = total < 1 ? 200 : total < 1.5 ? 30 : 0;
+  const color = `hsl(${hue}, 90%, 60%)`;
+
+  // Glow
+  ctx.beginPath();
+  ctx.arc(dotX, dotY, 12, 0, Math.PI * 2);
+  ctx.fillStyle = `hsla(${hue}, 90%, 60%, 0.15)`;
+  ctx.fill();
+
+  // Dot
+  ctx.beginPath();
+  ctx.arc(dotX, dotY, 6, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.shadowBlur = 12;
+  ctx.shadowColor = color;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+// ═══════════════════════════════════════════
+//  MAP (Leaflet)
+// ═══════════════════════════════════════════
+let leafletMap = null;
+let markerA = null, markerB = null, lineLayer = null;
+let traceLayer = null, traceCoords = [];
+let tempA = null, tempB = null;
+
+function initMap() {
+  mapInitialized = true;
+
+  leafletMap = L.map('map', {
+    center: [35.68, 139.69], zoom: 16,
+    attributionControl: false, zoomControl: false
+  });
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 20,
+    className: 'map-tiles'
+  }).addTo(leafletMap);
+
+  // 現在地取得してセンタリング
+  if (state.prevCoord) {
+    leafletMap.setView([state.prevCoord.lat, state.prevCoord.lng], 17);
+  } else {
+    navigator.geolocation?.getCurrentPosition(pos => {
+      leafletMap.setView([pos.coords.latitude, pos.coords.longitude], 17);
+    });
+  }
+
+  leafletMap.on('click', onMapClick);
+
+  // 既存ライン描画
+  if (state.finishLine) drawFinishLine();
+  updateMapLoadBtn();
+}
+
+const iconA = L.divIcon({ className:'', html:`<div style="width:28px;height:28px;background:#2288ff;border-radius:50%;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:12px;color:#fff;font-family:monospace">A</div>`, iconAnchor:[14,14] });
+const iconB = L.divIcon({ className:'', html:`<div style="width:28px;height:28px;background:#ff2d55;border-radius:50%;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:12px;color:#fff;font-family:monospace">B</div>`, iconAnchor:[14,14] });
+
+function onMapClick(e) {
+  const coord = { lat: e.latlng.lat, lng: e.latlng.lng };
+  if (!tempA) {
+    tempA = coord;
+    if (markerA) markerA.remove();
+    markerA = L.marker([coord.lat, coord.lng], { icon: iconA }).addTo(leafletMap);
+    document.getElementById('mapPoint').textContent = 'B';
+    document.getElementById('mapInstr').innerHTML = '地図を<b>タップ</b>してポイント<b id="mapPoint">B</b>を設定してください';
+  } else if (!tempB) {
+    tempB = coord;
+    if (markerB) markerB.remove();
+    markerB = L.marker([coord.lat, coord.lng], { icon: iconB }).addTo(leafletMap);
+    drawTempLine();
+    document.getElementById('mapInstr').innerHTML = '<b style="color:var(--green)">S/Fライン設定完了</b> — SAVEで保存してください';
+    document.getElementById('saveLineBtn').style.display = '';
+  }
+}
+
+function drawTempLine() {
+  if (lineLayer) lineLayer.remove();
+  if (!tempA || !tempB) return;
+  lineLayer = L.polyline([[tempA.lat, tempA.lng], [tempB.lat, tempB.lng]], {
+    color: '#f05a00', weight: 3, dashArray: '8 4'
+  }).addTo(leafletMap);
+}
+
+function drawFinishLine() {
+  if (!state.finishLine) return;
+  const { a, b } = state.finishLine;
+  if (markerA) markerA.remove();
+  if (markerB) markerB.remove();
+  if (lineLayer) lineLayer.remove();
+  markerA = L.marker([a.lat, a.lng], { icon: iconA }).addTo(leafletMap);
+  markerB = L.marker([b.lat, b.lng], { icon: iconB }).addTo(leafletMap);
+  lineLayer = L.polyline([[a.lat, a.lng], [b.lat, b.lng]], {
+    color: '#f05a00', weight: 3
+  }).addTo(leafletMap);
+}
+
+function saveLine() {
+  if (!tempA || !tempB) return;
+  state.finishLine = { a: tempA, b: tempB };
+  saveFinishLine();
+  updateSFStatus();
+  toast('S/Fラインを保存しました', 'ok');
+  tempA = null; tempB = null;
+  document.getElementById('saveLineBtn').style.display = 'none';
+}
+
+function resetLine() {
+  tempA = null; tempB = null;
+  if (markerA) { markerA.remove(); markerA = null; }
+  if (markerB) { markerB.remove(); markerB = null; }
+  if (lineLayer) { lineLayer.remove(); lineLayer = null; }
+  document.getElementById('mapPoint').textContent = 'A';
+  document.getElementById('mapInstr').innerHTML = '地図を<b>タップ</b>してポイント<b id="mapPoint">A</b>を設定してください';
+  document.getElementById('saveLineBtn').style.display = 'none';
+}
+
+function loadExistingLine() {
+  if (!state.finishLine) return;
+  const { a, b } = state.finishLine;
+  tempA = a; tempB = b;
+  drawFinishLine();
+  document.getElementById('saveLineBtn').style.display = '';
+  document.getElementById('mapInstr').innerHTML = '<b style="color:var(--green)">既存ライン読込済み</b> — 変更する場合はRESETしてください';
+  leafletMap.fitBounds([[a.lat, a.lng], [b.lat, b.lng]], { padding: [40, 40] });
+}
+
+function updateMapLoadBtn() {
+  document.getElementById('loadLineBtn').style.display = state.finishLine ? '' : 'none';
+}
+
+// Map trace
+function updateTraceOnMap(coord) {
+  if (!mapInitialized) return;
+  traceCoords.push([coord.lat, coord.lng]);
+  if (traceLayer) traceLayer.remove();
+  if (traceCoords.length > 1) {
+    traceLayer = L.polyline(traceCoords, {
+      color: '#00c8e0', weight: 2, opacity: .7
+    }).addTo(leafletMap);
+  }
+}
+
+function clearTraceOnMap() {
+  traceCoords = [];
+  if (traceLayer) { traceLayer.remove(); traceLayer = null; }
+}
+
+// ═══════════════════════════════════════════
+//  SESSIONS
+// ═══════════════════════════════════════════
+function renderSessions() {
+  const list = document.getElementById('sessionList');
+  const empty = document.getElementById('emptyState');
+  if (state.sessions.length === 0) {
+    empty.style.display = 'flex'; list.innerHTML = ''; return;
+  }
+  empty.style.display = 'none';
+  list.innerHTML = state.sessions.map((s, i) => {
+    const best = bestLap(s);
+    const laps = s.laps.length;
+    const maxSpd = s.laps.reduce((m, l) => Math.max(m, ...l.gps.map(g => g.spd * 3.6)), 0);
+    return `<div class="session-card" onclick="openSession(${i})">
+      <div class="session-date">${fmtDate(s.date)}</div>
+      <div class="session-stats">
+        <div class="stat-item">
+          <div class="stat-label">LAPS</div>
+          <div class="stat-val">${laps}</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">BEST</div>
+          <div class="stat-val gold">${best ? fmtTime(best.duration) : '—'}</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">MAX SPD</div>
+          <div class="stat-val">${Math.round(maxSpd)}<span style="font-size:11px;color:var(--muted)"> km/h</span></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function bestLap(session) {
+  return session.laps.filter(l => l.duration).sort((a, b) => a.duration - b.duration)[0] ?? null;
+}
+
+function openSession(idx) {
+  const session = state.sessions[idx];
+  if (!session) return;
+  const best = bestLap(session);
+
+  const lapRows = session.laps.map((l, i) => {
+    const isBest = best && l === best;
+    const maxSpd = l.gps.length ? Math.max(...l.gps.map(g => g.spd * 3.6)) : 0;
+    const maxG = l.g.length ? Math.max(...l.g.map(g => Math.sqrt(g.x * g.x + g.y * g.y))) : 0;
+    return `<div class="lap-row ${i === 0 ? 'sel' : ''}" onclick="selectLapRow(this, ${idx}, ${i})">
+      <div class="lap-num">LAP ${l.n}</div>
+      <div class="lap-time ${isBest ? 'best' : ''}">${l.duration ? fmtTime(l.duration) : '—:——.———'}</div>
+      ${isBest ? '<div class="lap-badge">BEST</div>' : ''}
+      <div class="lap-meta">
+        ${Math.round(maxSpd)} km/h<br>
+        ${maxG.toFixed(2)}G max
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('modalTitle').textContent = fmtDate(session.date);
+  document.getElementById('modalBody').innerHTML = `
+    <div id="lapList">${lapRows}</div>
+    <div id="chartArea"></div>
+  `;
+  document.getElementById('modal').classList.add('open');
+
+  if (session.laps.length > 0) renderLapCharts(session.laps[0]);
+}
+
+function selectLapRow(el, sIdx, lIdx) {
+  document.querySelectorAll('.lap-row').forEach(r => r.classList.remove('sel'));
+  el.classList.add('sel');
+  renderLapCharts(state.sessions[sIdx].laps[lIdx]);
+}
+
+function renderLapCharts(lap) {
+  const area = document.getElementById('chartArea');
+  area.innerHTML = `
+    <div class="chart-card">
+      <div class="chart-title">SPEED — LAP ${lap.n}</div>
+      <canvas class="chart" id="chartSpd"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">G FORCE — LAP ${lap.n}</div>
+      <canvas class="chart" id="chartG"></canvas>
+    </div>
+  `;
+
+  drawLineChart('chartSpd', lap.gps.map(p => p.spd * 3.6), '#00e87a', 0, 200, 'km/h');
+  drawGChart('chartG', lap.g);
+}
+
+function drawLineChart(id, data, color, min, max, unit) {
+  const cv = document.getElementById(id);
+  if (!cv || !data.length) return;
+  const ctx = cv.getContext('2d');
+  const W = cv.offsetWidth, H = cv.offsetHeight;
+  cv.width = W; cv.height = H;
+
+  const step = data.length > 1 ? W / (data.length - 1) : W;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Grid lines
+  ctx.strokeStyle = '#1a2530'; ctx.lineWidth = 0.5;
+  [0.25, 0.5, 0.75].forEach(f => {
+    const y = H * (1 - f);
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  });
+
+  // Fill
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, color + '50');
+  grad.addColorStop(1, color + '05');
+
+  ctx.beginPath();
+  data.forEach((v, i) => {
+    const x = i * step;
+    const y = H - (v - min) / (max - min) * H;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.lineTo((data.length - 1) * step, H);
+  ctx.lineTo(0, H);
+  ctx.closePath();
+  ctx.fillStyle = grad; ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  data.forEach((v, i) => {
+    const x = i * step;
+    const y = H - (v - min) / (max - min) * H;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+}
+
+function drawGChart(id, data) {
+  const cv = document.getElementById(id);
+  if (!cv || !data.length) return;
+  const ctx = cv.getContext('2d');
+  const W = cv.offsetWidth, H = cv.offsetHeight;
+  cv.width = W; cv.height = H;
+
+  const step = data.length > 1 ? W / (data.length - 1) : W;
+  const mid = H / 2;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Center line
+  ctx.strokeStyle = '#1a2530'; ctx.lineWidth = 0.5;
+  ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(W, mid); ctx.stroke();
+
+  const drawChannel = (key, col) => {
+    ctx.beginPath();
+    data.forEach((v, i) => {
+      const x = i * step;
+      const y = mid - v[key] / 2 * H;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.stroke();
+  };
+
+  drawChannel('x', '#f05a00'); // lateral (orange)
+  drawChannel('y', '#00c8e0'); // longitudinal (cyan)
+
+  // Legend
+  ctx.font = '10px Share Tech Mono';
+  ctx.fillStyle = '#f05a00'; ctx.fillText('LATERAL', 6, 14);
+  ctx.fillStyle = '#00c8e0'; ctx.fillText('LONGIT', 6, 26);
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+}
+
+// ═══════════════════════════════════════════
+//  PERSISTENCE
+// ═══════════════════════════════════════════
+function saveSessions() {
+  try { localStorage.setItem('circuit_sessions', JSON.stringify(state.sessions)); } catch {}
+}
+
+function loadSessions() {
+  try {
+    const d = localStorage.getItem('circuit_sessions');
+    if (d) state.sessions = JSON.parse(d);
+  } catch {}
+}
+
+function saveFinishLine() {
+  try { localStorage.setItem('circuit_finishline', JSON.stringify(state.finishLine)); } catch {}
+}
+
+function loadFinishLine() {
+  try {
+    const d = localStorage.getItem('circuit_finishline');
+    if (d) state.finishLine = JSON.parse(d);
+  } catch {}
+}
+
+function updateSFStatus() {
+  const el = document.getElementById('sfStatus');
+  const txt = document.getElementById('sfStatusText');
+  if (state.finishLine) {
+    el.classList.add('set');
+    txt.textContent = 'S/Fライン設定済み';
+  } else {
+    el.classList.remove('set');
+    txt.textContent = 'S/Fライン未設定 — S/F LINEタブで設定してください';
+  }
+  updateMapLoadBtn();
+}
+
+// ═══════════════════════════════════════════
+//  UTILS
+// ═══════════════════════════════════════════
+function fmtTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  const ms = Math.floor((sec % 1) * 1000);
+  return `${m}:${String(s).padStart(2,'0')}.${String(ms).padStart(3,'0')}`;
+}
+
+function fmtDate(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('ja-JP') + ' ' + d.toLocaleTimeString('ja-JP', { hour:'2-digit', minute:'2-digit' });
+}
+
+let toastTimer;
+function toast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ═══════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════
+loadSessions();
+loadFinishLine();
+updateSFStatus();
+startGPS();
+startMotion();
+requestAnimationFrame(renderLoop);
+
+// Wake Lock（画面スリープ防止）
+if ('wakeLock' in navigator) {
+  navigator.wakeLock.request('screen').catch(() => {});
+}
+</script>
+</body>
+</html>
